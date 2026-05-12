@@ -78,14 +78,20 @@ def run_script(name: str, path: str):
     """
     Run a child Python script and propagate any non-zero exit code.
 
-    Note: interactive_fetcher.py is interactive (reads stdin), so we
-    run it WITHOUT stdout/stderr redirection so the user sees all output
-    and the tqdm progress bar renders correctly.
+    stdin/stdout/stderr are intentionally inherited from the parent
+    process (default when no redirection args are passed) so that:
+      • interactive_fetcher.py can receive BOTH terminal prompts:
+          1. The Archive.org URL / identifier input
+          2. The intro-skip timestamp input
+      • tqdm progress bars and all print() output render correctly.
     """
     print(f"\n{'─' * 60}")
     print(f"▶  Running {name}: {path}")
     print(f"{'─' * 60}")
-    result = subprocess.run([sys.executable, path])
+    result = subprocess.run(
+        [sys.executable, path],
+        stdin=None,   # explicitly inherit the parent’s stdin
+    )
     if result.returncode != 0:
         print(
             f"\n❌  {name} exited with code {result.returncode}. "
@@ -129,12 +135,14 @@ def main():
     needs_fetch = queue_is_empty() or not state_exists()
 
     if needs_fetch:
-        print("\n📭  Queue is empty (or no state.json found).")
+        print("\n💭  Queue is empty (or no state.json found).")
         print(
             "    Running interactive_fetcher.py…\n"
-            "    ⚠️   The pipeline will PAUSE to ask for your intro start time."
+            "    ⚠️   You will be asked for TWO inputs:\n"
+            "         1️⃣  The Archive.org URL or item identifier\n"
+            "         2️⃣  The exact second where the cartoon content begins"
         )
-        # interactive_fetcher reads stdin → run as inherited process
+        # interactive_fetcher reads stdin twice → run as inherited process
         run_script("Interactive Fetcher", SCRIPTS["fetcher"])
     else:
         state   = read_state()

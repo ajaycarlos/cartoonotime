@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 interactive_fetcher.py — The Interactive Downloader
-Searches Internet Archive for colored animations (1970–2005),
+Accepts a manually pasted Archive.org URL or item identifier,
 downloads the highest-resolution MP4 available, opens it in
 the system video player, then asks the user where the real
 content begins so the intro can be skipped.
@@ -20,9 +20,11 @@ import subprocess
 import math
 import glob
 
+import re
+
 import requests
 from tqdm import tqdm
-from internetarchive import search_items, get_item
+from internetarchive import get_item
 
 
 # ─────────────────────────────────────────────
@@ -32,10 +34,16 @@ QUEUE_DIR        = "queue"
 STATE_FILE       = "state.json"
 CHUNK_DURATION_S = 60
 
-# Archive.org search: coloured animations 1970-2005
-SEARCH_QUERY = (
-    'collection:animationandcartoons AND '
-    'date:[1970-01-01 TO 2005-12-31]'
+# Regex to extract an identifier from a full Archive.org URL or a bare identifier.
+# Handles:
+#   https://archive.org/details/TheBarnDance
+#   https://archive.org/details/TheBarnDance/
+#   https://archive.org/details/TheBarnDance?start=0&…
+#   TheBarnDance   (bare identifier)
+_ARCHIVE_URL_RE = re.compile(
+    r"(?:https?://archive\.org/(?:details|download)/)"
+    r"([A-Za-z0-9_\-\.]+)",
+    re.IGNORECASE,
 )
 
 
@@ -61,26 +69,35 @@ def verify_auth_token():
 # ─────────────────────────────────────────────
 # Archive.org helpers
 # ─────────────────────────────────────────────
-def get_random_cartoon() -> tuple[str, str]:
+def prompt_identifier() -> str:
     """
-    Sample up to 100 qualifying items, return (identifier, title).
-    We also pull the title here so we only call get_item() once later.
+    Ask the user to paste an Archive.org URL or bare item identifier.
+    Accepts:
+      - Full URL  : https://archive.org/details/TheBarnDance
+      - Bare ID   : TheBarnDance
+    Returns the extracted identifier string.
     """
-    import random
-    print("\n🔍  Searching Internet Archive for colored animations (1970–2005)…")
-    results = []
-    for i, item in enumerate(search_items(SEARCH_QUERY)):
-        results.append(item)
-        if i >= 99:
-            break
+    raw = input(
+        "\n🔗 Paste the Archive.org URL or Item Identifier for the cartoon: "
+    ).strip()
 
-    if not results:
-        raise RuntimeError("No items returned from Internet Archive search.")
+    # Try to extract from a full URL first
+    match = _ARCHIVE_URL_RE.search(raw)
+    if match:
+        identifier = match.group(1)
+        print(f"   🔍  Extracted identifier from URL: {identifier}")
+        return identifier
 
-    chosen     = random.choice(results)
-    identifier = chosen["identifier"]
-    print(f"   ✅  Selected identifier: {identifier}")
-    return identifier
+    # Validate bare identifier: alphanumeric, hyphens, underscores, dots
+    if re.fullmatch(r"[A-Za-z0-9_\-\.]+", raw):
+        print(f"   🔍  Using identifier: {raw}")
+        return raw
+
+    raise ValueError(
+        f"Could not parse a valid Archive.org identifier from: {raw!r}\n"
+        "Expected a URL like https://archive.org/details/TheBarnDance "
+        "or a bare identifier like TheBarnDance."
+    )
 
 
 def find_best_mp4(identifier: str) -> tuple[str, str, int, str]:
@@ -91,6 +108,13 @@ def find_best_mp4(identifier: str) -> tuple[str, str, int, str]:
     """
     print(f"\n📦  Fetching metadata for: {identifier}")
     item = get_item(identifier)
+
+    # Verify the item actually exists on the Archive
+    if not item.exists:
+        raise RuntimeError(
+            f"Item '{identifier}' was not found on Internet Archive.\n"
+            "Double-check the URL or identifier and try again."
+        )
 
     mp4_files = [
         f for f in item.files
@@ -297,8 +321,8 @@ def main():
 
     video_path = None
     try:
-        # 1. Find a cartoon on Internet Archive
-        identifier                  = get_random_cartoon()
+        # 1. Prompt user for an Archive.org URL or bare identifier
+        identifier = prompt_identifier()
         url, filename, file_size, title = find_best_mp4(identifier)
 
         # 2. Download with rich progress bar
