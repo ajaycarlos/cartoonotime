@@ -27,8 +27,8 @@ STATE_FILE  = "state.json"
 QUEUE_DIR   = "queue"
 
 SCRIPTS = {
-    "fetcher":  "interactive_fetcher.py",   # replaces brainrot_fetcher.py
-    "editor":   "smart_editor.py",          # replaces brainrot_editor.py
+    "fetcher":  "interactive_fetcher.py",
+    "editor":   "smart_editor.py",
     "uploader": "yt_uploader_v2.py",
 }
 
