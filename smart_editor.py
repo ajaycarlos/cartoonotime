@@ -224,13 +224,11 @@ def build_ffmpeg_cmd(
       └─────────────────────────┘
     """
     filter_complex = (
-        # ── Top panel: scale height to exactly TOP_H (1440), let width expand, then crop
-        # crop_x pins the horizontal window to the "center of action"
+        # ── Top panel: scale height to 1440, let width expand, then crop
         f"[0:v]scale=-1:{TOP_H},crop={OUT_W}:{TOP_H}:{crop_x}:0[vtop];"
 
-        # ── Bottom panel: satisfying video (sought via -ss before decode)
-        # Scale height to exactly BOT_H (480), then center-crop
-        f"[1:v]scale=-1:{BOT_H},crop={OUT_W}:{BOT_H}:(in_w-{OUT_W})/2:(in_h-{BOT_H})/2[vbottom];"
+        # ── Bottom panel: scale width to 1080, let height expand, then center-crop
+        f"[1:v]scale={OUT_W}:-1,crop={OUT_W}:{BOT_H}:(in_w-{OUT_W})/2:(in_h-{BOT_H})/2[vbottom];"
 
         # ── Vertical stack
         "[vtop][vbottom]vstack=inputs=2[vout];"

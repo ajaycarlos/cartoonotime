@@ -21,9 +21,8 @@ import math
 import glob
 
 import re
+import urllib.parse
 
-import requests
-from tqdm import tqdm
 from internetarchive import get_item
 
 
@@ -38,11 +37,12 @@ CHUNK_DURATION_S = 60
 # Handles:
 #   https://archive.org/details/TheBarnDance
 #   https://archive.org/details/TheBarnDance/
-#   https://archive.org/details/TheBarnDance?start=0&…
+#   https://archive.org/details/TheBarnDance/Nested/File.mp4
 #   TheBarnDance   (bare identifier)
 _ARCHIVE_URL_RE = re.compile(
-    r"(?:https?://archive\.org/(?:details|download)/)"
-    r"([A-Za-z0-9_\-\.]+)",
+    r"(?:https?://(?:[a-zA-Z0-9\-]+\.)?archive\.org/(?:details|download|0/items|items)/)"
+    r"([A-Za-z0-9_\-\.]+)"
+    r"(?:/([^?#]+))?",
     re.IGNORECASE,
 )
 
@@ -69,13 +69,14 @@ def verify_auth_token():
 # ─────────────────────────────────────────────
 # Archive.org helpers
 # ─────────────────────────────────────────────
-def prompt_identifier() -> str:
+def prompt_identifier() -> tuple:
     """
     Ask the user to paste an Archive.org URL or bare item identifier.
     Accepts:
       - Full URL  : https://archive.org/details/TheBarnDance
+      - File URL  : https://archive.org/details/TheBarnDance/Specific+File.mp4
       - Bare ID   : TheBarnDance
-    Returns the extracted identifier string.
+    Returns (identifier, specific_file).
     """
     raw = input(
         "\n🔗 Paste the Archive.org URL or Item Identifier for the cartoon: "
@@ -86,12 +87,24 @@ def prompt_identifier() -> str:
     if match:
         identifier = match.group(1)
         print(f"   🔍  Extracted identifier from URL: {identifier}")
-        return identifier
+        
+        specific_file = match.group(2)
+        if specific_file:
+            specific_file = specific_file.strip("/")
+            if specific_file:
+                specific_file = urllib.parse.unquote_plus(specific_file)
+            else:
+                specific_file = None
+                
+        if specific_file:
+            print(f"   🔍  Targeting specific file: {specific_file}")
+            
+        return identifier, specific_file
 
     # Validate bare identifier: alphanumeric, hyphens, underscores, dots
     if re.fullmatch(r"[A-Za-z0-9_\-\.]+", raw):
         print(f"   🔍  Using identifier: {raw}")
-        return raw
+        return raw, None
 
     raise ValueError(
         f"Could not parse a valid Archive.org identifier from: {raw!r}\n"
@@ -100,11 +113,11 @@ def prompt_identifier() -> str:
     )
 
 
-def find_best_mp4(identifier: str) -> tuple[str, str, int, str]:
+def find_best_mp4(identifier: str, specific_file: str = None) -> tuple:
     """
     Fetch item metadata and return
     (download_url, filename, file_size_bytes, human_title).
-    Prefers the highest-resolution (largest) MP4.
+    Prefers the specific file if requested, else highest-resolution (largest) MP4.
     """
     print(f"\n📦  Fetching metadata for: {identifier}")
     item = get_item(identifier)
@@ -116,22 +129,33 @@ def find_best_mp4(identifier: str) -> tuple[str, str, int, str]:
             "Double-check the URL or identifier and try again."
         )
 
-    mp4_files = [
-        f for f in item.files
-        if f["name"].lower().endswith(".mp4")
-    ]
-    if not mp4_files:
-        raise RuntimeError(f"No .mp4 files found for item: {identifier}")
+    best = None
+    if specific_file:
+        for f in item.files:
+            if f["name"] == specific_file:
+                best = f
+                break
+        if not best:
+            print(f"   ⚠️   Specific file '{specific_file}' not found. Falling back to largest MP4.")
 
-    # Sort descending by file size → highest resolution first
-    mp4_files.sort(key=lambda x: int(x.get("size", 0)), reverse=True)
-    best      = mp4_files[0]
+    if not best:
+        mp4_files = [
+            f for f in item.files
+            if f["name"].lower().endswith(".mp4")
+        ]
+        if not mp4_files:
+            raise RuntimeError(f"No .mp4 files found for item: {identifier}")
+
+        # Sort descending by file size → highest resolution first
+        mp4_files.sort(key=lambda x: int(x.get("size", 0)), reverse=True)
+        best = mp4_files[0]
+
     filename  = best["name"]
     file_size = int(best.get("size", 0))
     url       = f"https://archive.org/download/{identifier}/{filename}"
     title     = item.metadata.get("title", identifier)
 
-    print(f"   🎯  Best MP4 : {filename}  ({file_size / 1_048_576:.1f} MB)")
+    print(f"   🎯  Selected MP4 : {filename}  ({file_size / 1_048_576:.1f} MB)")
     return url, filename, file_size, title
 
 
@@ -140,28 +164,38 @@ def find_best_mp4(identifier: str) -> tuple[str, str, int, str]:
 # ─────────────────────────────────────────────
 def download_video(url: str, filename: str, file_size: int) -> str:
     """
-    Stream-download with a rich tqdm progress bar showing
-    Speed, ETA, and size in MB.  Returns the local file path.
+    Download with aria2c for maximum speed.
+    Returns the local file path.
     """
-    local_path = filename  # save to cwd (project root)
+    # Use basename to avoid FileNotFoundError when filename contains nested paths
+    local_path = os.path.basename(filename)  # save to cwd (project root)
 
-    print(f"\n⬇️   Downloading: {filename}")
-    with requests.get(url, stream=True, timeout=120) as r:
-        r.raise_for_status()
-        with open(local_path, "wb") as f, tqdm(
-            total=file_size,
-            unit="B",
-            unit_scale=True,         # converts to KB / MB automatically
-            unit_divisor=1024,
-            desc=filename[:40],
-            dynamic_ncols=True,
-            colour="cyan",
-            # tqdm shows speed and ETA by default when total is known
-        ) as bar:
-            for chunk in r.iter_content(chunk_size=65_536):
-                if chunk:
-                    f.write(chunk)
-                    bar.update(len(chunk))
+    print(f"\n⬇️   Downloading: {local_path}")
+    
+    try:
+        subprocess.run(
+            [
+                "aria2c",
+                "-x", "16",
+                "-s", "16",
+                "-j", "16",
+                "--summary-interval=1",
+                "--allow-overwrite=true",
+                "-c",
+                "--auto-file-renaming=false",
+                "-d", ".",
+                "-o", local_path,
+                url
+            ],
+            check=True
+        )
+    except FileNotFoundError:
+        print("\n❌  Error: aria2c is not installed.", file=sys.stderr)
+        print("    Please run: sudo apt install aria2", file=sys.stderr)
+        sys.exit(1)
+    except subprocess.CalledProcessError as e:
+        print(f"\n❌  aria2c download failed: {e}", file=sys.stderr)
+        sys.exit(1)
 
     print(f"   ✅  Download complete → {local_path}")
     return local_path
@@ -322,8 +356,8 @@ def main():
     video_path = None
     try:
         # 1. Prompt user for an Archive.org URL or bare identifier
-        identifier = prompt_identifier()
-        url, filename, file_size, title = find_best_mp4(identifier)
+        identifier, specific_file = prompt_identifier()
+        url, filename, file_size, title = find_best_mp4(identifier, specific_file)
 
         # 2. Download with rich progress bar
         video_path = download_video(url, filename, file_size)
