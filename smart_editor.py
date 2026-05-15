@@ -428,12 +428,7 @@ def run_pass2_subtitles(
     """
     escaped_srt = srt_path.replace("'", "\\'").replace(":", "\\:")
 
-    subtitle_vf = (
-        f"subtitles='{escaped_srt}':"
-        f"force_style='FontName=Arial,FontSize=24,"
-        f"PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"
-        f"Outline=2,MarginV=60'"
-    )
+    subtitle_vf = "subtitles=temp_subs.srt:force_style='Fontname=Arial,Fontsize=18,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=0,Alignment=2,MarginV=60'"
 
     cmd = [
         "ffmpeg", "-y",
