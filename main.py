@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-main.py — The Brainrot Pipeline Orchestrator  (v3)
+main.py — The Brainrot Pipeline Orchestrator  (V4.0 Pro)
 Processes exactly ONE chunk per execution:
 
   1. Security check (API_AUTH_TOKEN env var)
@@ -106,7 +106,8 @@ def run_script(name: str, path: str):
 # ─────────────────────────────────────────────
 def main():
     print("=" * 60)
-    print("   🧠  BRAINROT PIPELINE  —  v3")
+    print("   🧠  BRAINROT PIPELINE  —  V4.0 Pro")
+    print("   🤖  AI Tracking & Subtitles Active")
     print("=" * 60)
 
     # ── Step 0: Security gate ──────────────────────────────────
@@ -151,15 +152,15 @@ def main():
         title   = state.get("original_title", "?")
         print(f"\n📬  Queue ready — chunk {current}/{total}  |  {title!r}")
 
-    # ── Step 3: Edit (compose 75/25 split-screen) ─────────────
-    run_script("Smart Editor (75/25)", SCRIPTS["editor"])
+    # ── Step 3: Edit (compose 75/25 split-screen, AI pan + subtitles) ────
+    run_script("Smart Editor V4.0 (AI Track + Subtitles + 75/25)", SCRIPTS["editor"])
 
     # ── Step 4: Upload + open browser + advance state ─────────
     run_script("Uploader", SCRIPTS["uploader"])
 
     # ── Done ──────────────────────────────────────────────────
     print("\n" + "=" * 60)
-    print("   ✅  ONE chunk processed. YouTube Studio should be open.")
+    print("   ✅  ONE chunk processed  [V4.0 Pro]. YouTube Studio should be open.")
     print("       Review the draft, then run main.py again for next chunk.")
     print("=" * 60 + "\n")
     sys.exit(0)

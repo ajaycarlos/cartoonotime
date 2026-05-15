@@ -6,9 +6,10 @@ downloads the highest-resolution MP4 available, opens it in
 the system video player, then asks the user where the real
 content begins so the intro can be skipped.
 
-Slices the video sequentially into 60-second chunks from the
-user-defined start time using 'ffmpeg -c copy' (zero re-encode).
-Writes state.json and deletes the original large file when done.
+Slices the video sequentially into 170-second chunks from the
+user-defined start time using libx264 ultrafast re-encode to prevent
+NAL unit / keyframe freeze errors.  Writes state.json and deletes the
+original large file when done.
 
 Optimised for i3 / 8 GB RAM — no pydub, no audio analysis.
 """
@@ -31,7 +32,7 @@ from internetarchive import get_item
 # ─────────────────────────────────────────────
 QUEUE_DIR        = "queue"
 STATE_FILE       = "state.json"
-CHUNK_DURATION_S = 60
+CHUNK_DURATION_S = 170   # V4.0: 2 min 50 s — fixed NAL-unit re-encode
 
 # Regex to extract an identifier from a full Archive.org URL or a bare identifier.
 # Handles:
@@ -276,7 +277,7 @@ def get_video_duration(path: str) -> float:
 
 def calculate_chunks(total_duration: float, start_time: float) -> int:
     """
-    How many full 60-second chunks fit between start_time and the end?
+    How many full 170-second chunks fit between start_time and the end?
     """
     usable = total_duration - start_time
     return max(0, math.floor(usable / CHUNK_DURATION_S))
@@ -288,13 +289,19 @@ def slice_chunks_sequential(
     num_chunks: int,
 ) -> list[str]:
     """
-    Slice num_chunks × 60-second segments sequentially from start_time
-    using 'ffmpeg -c copy' (stream copy, no re-encode).
+    Slice num_chunks × 170-second segments sequentially from start_time.
+
+    CRITICAL (V4.0): Uses libx264 re-encode instead of -c copy to ensure
+    every segment starts on a clean keyframe, eliminating the 13-second
+    freeze caused by NAL unit / keyframe alignment errors.
+
+    Codec settings: libx264 ultrafast, CRF 23, AAC 128k, 4 threads.
     Saves to /queue/chunk_1.mp4 … chunk_N.mp4.
     """
     os.makedirs(QUEUE_DIR, exist_ok=True)
     paths = []
     print(f"\n✂️   Slicing {num_chunks} chunk(s) sequentially from {start_time:.1f}s…")
+    print("   ℹ️   Re-encoding with libx264 ultrafast (fixes NAL/keyframe freeze).")
 
     for i in range(1, num_chunks + 1):
         chunk_start = start_time + (i - 1) * CHUNK_DURATION_S
@@ -304,10 +311,16 @@ def slice_chunks_sequential(
         subprocess.run(
             [
                 "ffmpeg", "-y",
-                "-ss", f"{chunk_start:.3f}",  # fast seek BEFORE -i
+                "-ss", f"{chunk_start:.3f}",   # fast seek BEFORE -i
                 "-i",  video_path,
                 "-t",  str(CHUNK_DURATION_S),
-                "-c",  "copy",               # zero re-encode — fastest
+                # ── V4.0 CRITICAL FIX: re-encode for clean keyframes ──
+                "-c:v", "libx264",
+                "-preset", "ultrafast",
+                "-crf", "23",
+                "-c:a", "aac",
+                "-b:a", "128k",
+                "-threads", "4",
                 out_path,
             ],
             stdout=subprocess.DEVNULL,
@@ -373,14 +386,14 @@ def main():
         total_dur  = get_video_duration(video_path)
         num_chunks = calculate_chunks(total_dur, start_time)
 
-        print(f"   Total duration : {total_dur:.1f}s")
-        print(f"   Intro skip     : {start_time:.1f}s")
-        print(f"   Usable content : {total_dur - start_time:.1f}s")
-        print(f"   60-s chunks    : {num_chunks}")
+        print(f"   Total duration  : {total_dur:.1f}s")
+        print(f"   Intro skip      : {start_time:.1f}s")
+        print(f"   Usable content  : {total_dur - start_time:.1f}s")
+        print(f"   170-s chunks    : {num_chunks}")
 
         if num_chunks == 0:
             print(
-                "\n⚠️   No full 60-second chunks fit after the intro.\n"
+                "\n⚠️   No full 170-second chunks fit after the intro.\n"
                 "     Choose a smaller start time or try another video.",
                 file=sys.stderr,
             )
