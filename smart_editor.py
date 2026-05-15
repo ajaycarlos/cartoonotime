@@ -1,19 +1,24 @@
 #!/usr/bin/env python3
 """
-smart_editor.py — The AI Brain  (V4.1 Editor Overhaul)
+smart_editor.py — The AI Brain  (V5.0 True AI Editor)
 Reads chunk_X.mp4 from /queue and satisfying_base.mp4 from the root.
 
-NEW in V4.1:
-  • Subtitle Sync Fix: audio is first extracted to temp_audio.wav at
-    16 kHz mono (timestamp-reset) before Whisper transcription, ensuring
-    perfect zero-start synchronisation.
-  • Subtitle Styling: fontsize reduced to 48, text placed at y=1480 so it
-    sits neatly within the bottom satisfying panel (1440–1920 px).
-  • Motion Tracking (OpenCV Frame Differencing): Haar Cascade face
-    detection removed. Frame differencing (absdiff + threshold + findContours)
-    locates the largest moving object in each sampled frame. Its center X is
-    fed into a 30-frame Moving Average Filter for smooth, jerk-free panning.
-    Falls back to center-crop if no motion is found.
+NEW in V5.0:
+  • YOLOv8n Object Tracking: Replaces OpenCV frame-differencing with a
+    real YOLO model. Every 10th frame is sampled; the detection with the
+    largest bounding-box area is used as the focal point for that frame.
+    Falls back to the previous frame's X (or centre) when nothing is detected.
+    A 30-frame Moving Average smooths the resulting pan curve.
+
+  • Two-Pass FFmpeg Render:
+      Pass 1 — filter_complex stacks top + bottom panels into temp_stacked.mp4
+               (NO subtitle filter here — avoids libass drop issues).
+      Pass 2 — A clean second FFmpeg call burns temp_subs.srt onto the
+               stacked 1080×1920 output with force_style and MarginV=60.
+               This guarantees subtitle burn-in every time.
+
+  • Safe Cleanup: temp_audio.wav, temp_subs.srt, and temp_stacked.mp4 are
+    all removed in the finally block.
 
 75/25 Split (1080 × 1920 YouTube Short):
   • Top  (cartoon)    : 1080 × 1440  (75 % of 1920)
@@ -28,9 +33,20 @@ import sys
 import json
 import random
 import subprocess
-import tempfile
 
-# ── OpenCV ────────────────────────────────────────────────────────────────────
+# ── YOLOv8 ───────────────────────────────────────────────────────────────────
+try:
+    from ultralytics import YOLO
+    YOLO_AVAILABLE = True
+except ImportError:
+    YOLO_AVAILABLE = False
+    print(
+        "⚠️   ultralytics not installed. "
+        "Falling back to centre-crop for the top panel.",
+        file=sys.stderr,
+    )
+
+# ── OpenCV (needed for frame reading even with YOLO) ─────────────────────────
 try:
     import cv2
     OPENCV_AVAILABLE = True
@@ -57,12 +73,13 @@ except ImportError:
 # ─────────────────────────────────────────────
 # Constants
 # ─────────────────────────────────────────────
-STATE_FILE   = "state.json"
-QUEUE_DIR    = "queue"
-BASE_VIDEO   = "satisfying_base.mp4"
-OUTPUT_FILE  = "ready_to_upload.mp4"
-TEMP_AUDIO   = "temp_audio.wav"
-TEMP_SUBS    = "temp_subs.srt"
+STATE_FILE    = "state.json"
+QUEUE_DIR     = "queue"
+BASE_VIDEO    = "satisfying_base.mp4"
+OUTPUT_FILE   = "ready_to_upload.mp4"
+TEMP_AUDIO    = "temp_audio.wav"
+TEMP_SUBS     = "temp_subs.srt"
+TEMP_STACKED  = "temp_stacked.mp4"
 
 # Final output: 9:16 vertical Short
 OUT_W   = 1080
@@ -72,6 +89,9 @@ BOT_H   = OUT_H - TOP_H       # 480  px  (25 %)
 
 # Moving Average Filter window for smooth-pan tracking
 SMOOTH_PAN_WINDOW = 30
+
+# YOLOv8: sample every Nth frame (keeps CPU load low on i3)
+YOLO_SAMPLE_EVERY = 10
 
 
 # ─────────────────────────────────────────────
@@ -125,34 +145,40 @@ def get_video_dimensions(path: str) -> tuple[int, int]:
 
 
 # ─────────────────────────────────────────────
-# OpenCV: Motion Tracking (Frame Differencing)
+# YOLOv8: Object Tracking → Smooth Pan X
 # ─────────────────────────────────────────────
 def find_smooth_pan_x_offsets(chunk_path: str, source_width: int) -> list[int]:
     """
-    Sample the cartoon chunk at 1 fps using OpenCV frame differencing.
+    Sample the cartoon chunk every YOLO_SAMPLE_EVERY frames using YOLOv8n.
 
-    Algorithm (per sampled frame pair):
-      1. Convert both frames to grayscale and apply Gaussian Blur.
-      2. cv2.absdiff(prev_gray, curr_gray) → motion mask.
-      3. cv2.threshold → binary mask.
-      4. cv2.findContours → locate all motion blobs.
-      5. Pick the largest contour; use its bounding-box center X.
-      6. Fall back to source_width // 2 if no contour is found.
+    Algorithm (per sampled frame):
+      1. Run yolov8n inference on the frame.
+      2. Among all detected bounding boxes, pick the one with the largest area
+         — this is almost always the main character / focal object.
+      3. Extract that bounding box's centre-X as the pan target for this frame.
+      4. If no objects are detected, carry forward the previous frame's X
+         (or fall back to source_width // 2 on the very first frame).
 
-    Apply a 30-frame Moving Average Filter so the crop window pans
-    smoothly without jerking when motion spikes.
+    Apply a 30-frame Moving Average Filter so the crop window pans smoothly.
 
-    Returns a list of smoothed crop-X values (one per sampled frame),
-    each clamped to [0, source_width - OUT_W].
+    Returns a list of smoothed crop-X values (one per sampled frame), each
+    clamped to [0, source_width - OUT_W].
 
-    Falls back to center-crop if OpenCV is unavailable or the video
+    Falls back to centre-crop if YOLO/OpenCV is unavailable or the video
     cannot be opened.
     """
     fallback_x = max(0, source_width // 2 - OUT_W // 2)
-    print(f"\n🎯  OpenCV Motion Tracking (frame differencing): {chunk_path}")
+    print(f"\n🤖  YOLOv8n Object Tracking: {chunk_path}")
 
-    if not OPENCV_AVAILABLE:
-        print("   ℹ️   OpenCV unavailable — using centre-crop.")
+    if not YOLO_AVAILABLE or not OPENCV_AVAILABLE:
+        print("   ℹ️   YOLO/OpenCV unavailable — using centre-crop.")
+        return [fallback_x]
+
+    # Load model (downloads yolov8n.pt on first run, ~6 MB)
+    try:
+        model = YOLO("yolov8n.pt")
+    except Exception as exc:
+        print(f"   ⚠️   Could not load YOLOv8 model: {exc}", file=sys.stderr)
         return [fallback_x]
 
     cap = cv2.VideoCapture(chunk_path)
@@ -160,46 +186,44 @@ def find_smooth_pan_x_offsets(chunk_path: str, source_width: int) -> list[int]:
         print("   ⚠️   Could not open chunk with OpenCV — using centre-crop.")
         return [fallback_x]
 
-    fps      = cap.get(cv2.CAP_PROP_FPS) or 25.0
-    step     = max(1, int(fps))   # 1 sample per second
-
     raw_x_values: list[int] = []
-    frame_idx   = 0
-    sampled     = 0
-    motion_hits = 0
-
-    prev_gray: "cv2.Mat | None" = None
+    frame_idx = 0
+    sampled   = 0
+    hits      = 0
+    last_cx   = source_width // 2   # carry-forward seed
 
     while True:
         ret, frame = cap.read()
         if not ret:
             break
 
-        if frame_idx % step == 0:
-            curr_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            curr_gray = cv2.GaussianBlur(curr_gray, (21, 21), 0)
+        if frame_idx % YOLO_SAMPLE_EVERY == 0:
+            try:
+                results = model(frame, verbose=False)
+                boxes = results[0].boxes  # ultralytics Boxes object
 
-            if prev_gray is None:
-                # First sample: no previous frame to diff against
-                raw_x_values.append(source_width // 2)
-            else:
-                diff  = cv2.absdiff(prev_gray, curr_gray)
-                _, thresh = cv2.threshold(diff, 25, 255, cv2.THRESH_BINARY)
-                contours, _ = cv2.findContours(
-                    thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-                )
+                if boxes is not None and len(boxes) > 0:
+                    # Find the bounding box with the largest area
+                    best_cx    = None
+                    best_area  = -1
+                    for box in boxes:
+                        x1, y1, x2, y2 = box.xyxy[0].tolist()
+                        area = (x2 - x1) * (y2 - y1)
+                        if area > best_area:
+                            best_area = area
+                            best_cx   = int((x1 + x2) / 2)
 
-                if contours:
-                    # Largest contour = the most significant moving object
-                    largest = max(contours, key=cv2.contourArea)
-                    bx, by, bw, bh = cv2.boundingRect(largest)
-                    center_x = bx + bw // 2
-                    raw_x_values.append(center_x)
-                    motion_hits += 1
-                else:
-                    raw_x_values.append(source_width // 2)  # center fallback
+                    if best_cx is not None:
+                        last_cx = best_cx
+                        hits += 1
 
-            prev_gray = curr_gray
+                raw_x_values.append(last_cx)
+            except Exception as exc:
+                # Graceful degradation on per-frame inference errors
+                print(f"   ⚠️   YOLO inference error on frame {frame_idx}: {exc}",
+                      file=sys.stderr)
+                raw_x_values.append(last_cx)
+
             sampled += 1
 
         frame_idx += 1
@@ -207,10 +231,13 @@ def find_smooth_pan_x_offsets(chunk_path: str, source_width: int) -> list[int]:
     cap.release()
     print(
         f"   ✅  Sampled {sampled} frame(s) — "
-        f"{motion_hits} frame(s) with detected motion."
+        f"{hits} frame(s) with YOLO detections."
     )
 
-    # ── Apply Moving Average Filter (window = SMOOTH_PAN_WINDOW) ──────────
+    if not raw_x_values:
+        return [fallback_x]
+
+    # ── Apply Moving Average Filter (window = SMOOTH_PAN_WINDOW) ──────────────
     smoothed_center_x: list[int] = []
     for i, cx in enumerate(raw_x_values):
         lo  = max(0, i - SMOOTH_PAN_WINDOW // 2)
@@ -218,22 +245,19 @@ def find_smooth_pan_x_offsets(chunk_path: str, source_width: int) -> list[int]:
         avg = int(sum(raw_x_values[lo:hi]) / (hi - lo))
         smoothed_center_x.append(avg)
 
-    # Convert center-X → crop-X (top-left of the 1080-wide crop window)
+    # Convert centre-X → crop-X (top-left of the 1080-wide crop window)
     smoothed_crop_x: list[int] = []
     for cx in smoothed_center_x:
         crop_x = cx - OUT_W // 2
         crop_x = max(0, min(crop_x, source_width - OUT_W))
         smoothed_crop_x.append(crop_x)
 
-    if smoothed_crop_x:
-        print(
-            f"   🎯  Smooth-pan range: X={min(smoothed_crop_x)}"
-            f"–{max(smoothed_crop_x)}px  "
-            f"(avg={int(sum(smoothed_crop_x)/len(smoothed_crop_x))}px)"
-        )
-        return smoothed_crop_x
-
-    return [fallback_x]
+    print(
+        f"   🎯  Smooth-pan range: X={min(smoothed_crop_x)}"
+        f"–{max(smoothed_crop_x)}px  "
+        f"(avg={int(sum(smoothed_crop_x)/len(smoothed_crop_x))}px)"
+    )
+    return smoothed_crop_x
 
 
 def representative_crop_x(smooth_offsets: list[int]) -> int:
@@ -261,10 +285,10 @@ def generate_srt(chunk_path: str, srt_path: str) -> bool:
     """
     Transcribe chunk_path audio using Whisper tiny model.
 
-    V4.1 Sync Fix:
+    V4.1 Sync Fix (retained):
       Audio is first extracted to TEMP_AUDIO (16 kHz mono) via FFmpeg so
-      that timestamps always start at 0.000 regardless of any PTS offset in
-      the source chunk.  The WAV is deleted after transcription.
+      timestamps always start at 0.000 regardless of any PTS offset in the
+      source chunk.  The WAV is deleted in the finally block.
 
     Write an SRT file to srt_path.
     Returns True on success, False if Whisper is unavailable or fails.
@@ -273,7 +297,7 @@ def generate_srt(chunk_path: str, srt_path: str) -> bool:
         print("   ℹ️   Whisper unavailable — no subtitles.")
         return False
 
-    # ── Step 1: Extract clean, timestamp-reset audio ────────────────────────
+    # ── Step 1: Extract clean, timestamp-reset audio ──────────────────────────
     print(f"\n🔊  Extracting audio for Whisper sync fix → {TEMP_AUDIO}")
     extract_cmd = [
         "ffmpeg", "-y",
@@ -290,7 +314,7 @@ def generate_srt(chunk_path: str, srt_path: str) -> bool:
         print(f"   ⚠️   Audio extraction failed: {exc}", file=sys.stderr)
         return False
 
-    # ── Step 2: Whisper transcription ───────────────────────────────────────
+    # ── Step 2: Whisper transcription ─────────────────────────────────────────
     print(f"🗣️   Whisper (tiny) transcribing: {TEMP_AUDIO}")
     try:
         model  = whisper.load_model("tiny")
@@ -319,29 +343,20 @@ def generate_srt(chunk_path: str, srt_path: str) -> bool:
 
 
 # ─────────────────────────────────────────────
-# FFmpeg command builder
+# Two-Pass FFmpeg Pipeline
 # ─────────────────────────────────────────────
-def build_ffmpeg_cmd(
+def run_pass1_stack(
     cartoon_chunk: str,
     base_video:    str,
     base_start:    float,
     base_duration: float,
     crop_x:        int,
-    output:        str,
-    srt_path:      str | None = None,
-) -> list[str]:
+    stacked_out:   str,
+) -> None:
     """
-    Build the FFmpeg filter_complex command for the V4.0 75/25 split-screen.
-
-    Layout (1080 × 1920 Short):
-      ┌─────────────────────────┐
-      │  Cartoon  — 1080 × 1440 │  ← 75 % (TOP_H)
-      ├─────────────────────────┤
-      │  Satisfying — 1080 × 480│  ← 25 % (BOT_H)
-      └─────────────────────────┘
-
-    Subtitles (if srt_path provided) are burned via subtitles filter on the
-    FINAL stacked output so they sit on top of everything.
+    Pass 1: Scale, crop, and vstack the cartoon + satisfying panels.
+    Output is written to stacked_out (temp_stacked.mp4).
+    NO subtitle filter is applied here.
     """
     # ── Top panel: scale height to 1440, width expands proportionally, then crop ──
     top_filter = (
@@ -349,50 +364,28 @@ def build_ffmpeg_cmd(
         f"crop={OUT_W}:{TOP_H}:{crop_x}:0[vtop]"
     )
 
-    # ── Bottom panel: scale width to 1080, then center-crop height to 480 ──────
+    # ── Bottom panel: scale width to 1080, then centre-crop height to 480 ───────
     bot_filter = (
         f"[1:v]scale={OUT_W}:-1,"
         f"crop={OUT_W}:{BOT_H}:(in_w-{OUT_W})/2:(in_h-{BOT_H})/2[vbottom]"
     )
 
     # ── Vertical stack ────────────────────────────────────────────────────────
-    stack_filter = "[vtop][vbottom]vstack=inputs=2[stacked]"
+    stack_filter = "[vtop][vbottom]vstack=inputs=2[vout]"
 
-    # ── Subtitles filter (applied to stacked output) ──────────────────────────
-    if srt_path and os.path.exists(srt_path):
-        # Escape the SRT path for FFmpeg filter syntax
-        escaped_srt = srt_path.replace("'", "\\'").replace(":", "\\:")
-        # V4.1: FontSize=48, subtitles positioned at y=1480 (bottom panel).
-        # Alignment=2 (bottom-center ASS alignment) with MarginV adjusted so
-        # that the baseline sits at y≈1480 within the 1920-tall output.
-        # MarginV = OUT_H - subtitle_y = 1920 - 1480 = 440
-        subtitle_filter = (
-            f"[stacked]subtitles='{escaped_srt}':"
-            f"force_style='FontName=Arial,FontSize=48,PrimaryColour=&HFFFFFF,"
-            f"OutlineColour=&H000000,Outline=3,Alignment=2,MarginV=440'[vout]"
-        )
-        filter_complex = (
-            f"{top_filter};"
-            f"{bot_filter};"
-            f"{stack_filter};"
-            f"{subtitle_filter};"
-            # Audio: cartoon only, normalised
-            "[0:a]aformat=sample_rates=44100:channel_layouts=stereo[aout]"
-        )
-    else:
-        filter_complex = (
-            f"{top_filter};"
-            f"{bot_filter};"
-            f"{stack_filter};"
-            # Rename stacked to vout directly
-            "[stacked]null[vout];"
-            # Audio: cartoon only, normalised
-            "[0:a]aformat=sample_rates=44100:channel_layouts=stereo[aout]"
-        )
+    # ── Audio: cartoon only ───────────────────────────────────────────────────
+    audio_filter = "[0:a]aformat=sample_rates=44100:channel_layouts=stereo[aout]"
 
-    return [
+    filter_complex = (
+        f"{top_filter};"
+        f"{bot_filter};"
+        f"{stack_filter};"
+        f"{audio_filter}"
+    )
+
+    cmd = [
         "ffmpeg", "-y",
-        # Input 0: cartoon chunk (from queue)
+        # Input 0: cartoon chunk
         "-i", cartoon_chunk,
         # Input 1: satisfying base — seek BEFORE decode for speed
         "-ss", f"{base_start:.3f}",
@@ -402,19 +395,62 @@ def build_ffmpeg_cmd(
         "-filter_complex", filter_complex,
         "-map", "[vout]",
         "-map", "[aout]",
-        # Video codec — V4.0 hardware-optimised
+        # Video codec
         "-c:v", "libx264",
         "-preset", "ultrafast",
         "-crf", "23",
         # Audio codec
         "-c:a", "aac",
         "-b:a", "128k",
-        # Hardware target: i3-3220 (4 threads)
+        # Hardware target: i3-3220
         "-threads", "4",
-        # Stop at the shorter stream
         "-shortest",
-        output,
+        stacked_out,
     ]
+
+    print(f"\n⚙️   Pass 1 — Stacking panels → {stacked_out}")
+    print("    " + " ".join(cmd))
+    print()
+    subprocess.run(cmd, check=True)
+    print(f"   ✅  Pass 1 complete: {stacked_out}")
+
+
+def run_pass2_subtitles(
+    stacked_input: str,
+    srt_path:      str,
+    final_output:  str,
+) -> None:
+    """
+    Pass 2: Burn subtitles onto the already-stacked 1080×1920 video.
+
+    MarginV=60 places the subtitle baseline 60 px from the bottom of the
+    screen — sitting cleanly inside the 480-px parkour/satisfying panel.
+    """
+    escaped_srt = srt_path.replace("'", "\\'").replace(":", "\\:")
+
+    subtitle_vf = (
+        f"subtitles='{escaped_srt}':"
+        f"force_style='FontName=Arial,FontSize=24,"
+        f"PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"
+        f"Outline=2,MarginV=60'"
+    )
+
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", stacked_input,
+        "-vf", subtitle_vf,
+        "-c:v", "libx264",
+        "-preset", "ultrafast",
+        "-crf", "23",
+        "-c:a", "copy",
+        final_output,
+    ]
+
+    print(f"\n⚙️   Pass 2 — Burning subtitles → {final_output}")
+    print("    " + " ".join(cmd))
+    print()
+    subprocess.run(cmd, check=True)
+    print(f"   ✅  Pass 2 complete: {final_output}")
 
 
 # ─────────────────────────────────────────────
@@ -427,7 +463,7 @@ def process_video():
     total_chunks   = state.get("total_chunks", 5)
     original_title = state.get("original_title", "Unknown")
 
-    print(f"\n🎬  smart_editor V4.2 — Motion Tracking & Subtitle Sync Fix Active")
+    print(f"\n🎬  smart_editor V5.0 — YOLOv8 Tracking & Two-Pass Subtitle Burn")
     print(f"    Processing chunk {current_chunk}/{total_chunks}")
     print(f"    Title: {original_title!r}")
     print(f"    Split: {TOP_H}px top (75%) / {BOT_H}px bottom (25%)")
@@ -452,7 +488,7 @@ def process_video():
         # 4. Whisper subtitle generation
         srt_ok = generate_srt(chunk_file, srt_path)
 
-        # 5. OpenCV smooth-pan pass → per-frame crop X offsets
+        # 5. YOLOv8 smooth-pan pass → per-frame crop X offsets
         source_w, source_h = get_video_dimensions(chunk_file)
         print(f"    Source dimensions : {source_w} × {source_h}")
 
@@ -472,15 +508,25 @@ def process_video():
         print(f"    Random base start  : {base_start:.2f}s")
         print(f"    Subtitle SRT       : {srt_path if srt_ok else 'none (skipped)'}")
 
-        # 7. Build and run FFmpeg
-        cmd = build_ffmpeg_cmd(
+        # ── Pass 1: Stack panels (no subtitles) ─────────────────────────────
+        run_pass1_stack(
             chunk_file, BASE_VIDEO, base_start, chunk_dur,
-            crop_x, OUTPUT_FILE, srt_path if srt_ok else None
+            crop_x, TEMP_STACKED
         )
-        print(f"\n⚙️   Running FFmpeg (threads=4, preset=ultrafast)…")
-        print("    " + " ".join(cmd))
-        print()
-        subprocess.run(cmd, check=True)
+
+        # ── Pass 2: Burn subtitles (or just copy if no SRT) ─────────────────
+        if srt_ok and os.path.exists(srt_path):
+            run_pass2_subtitles(TEMP_STACKED, srt_path, OUTPUT_FILE)
+        else:
+            # No subtitles — simply re-mux stacked to final output
+            print(f"\n⚙️   No subtitles — copying stacked output to {OUTPUT_FILE}")
+            copy_cmd = [
+                "ffmpeg", "-y",
+                "-i", TEMP_STACKED,
+                "-c", "copy",
+                OUTPUT_FILE,
+            ]
+            subprocess.run(copy_cmd, check=True)
 
         print(f"\n✅  Output written: {OUTPUT_FILE}")
         print(f"    Top  (cartoon)     : {OUT_W} × {TOP_H}")
@@ -488,13 +534,11 @@ def process_video():
         print(f"    Subtitles burned   : {'yes' if srt_ok else 'no'}")
 
     finally:
-        # 8. Cleanup temp files after rendering
-        if os.path.exists(TEMP_AUDIO):
-            os.remove(TEMP_AUDIO)
-            print(f"   🗑️   Removed temp audio: {TEMP_AUDIO}")
-        if os.path.exists(srt_path):
-            os.remove(srt_path)
-            print(f"   🗑️   Removed temp subs: {srt_path}")
+        # 8. Cleanup all temp files
+        for tmp in (TEMP_AUDIO, TEMP_SUBS, TEMP_STACKED):
+            if os.path.exists(tmp):
+                os.remove(tmp)
+                print(f"   🗑️   Removed temp file: {tmp}")
 
 
 # ─────────────────────────────────────────────
@@ -504,5 +548,5 @@ if __name__ == "__main__":
     try:
         process_video()
     except Exception as exc:
-        print(f"\n❌  smart_editor V4.1 failed: {exc}", file=sys.stderr)
+        print(f"\n❌  smart_editor V5.0 failed: {exc}", file=sys.stderr)
         sys.exit(1)
