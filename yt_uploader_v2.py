@@ -120,14 +120,14 @@ def upload_video(youtube, file_path: str, title: str, description: str) -> str:
 # ─────────────────────────────────────────────
 def cleanup_and_advance(state: dict, chunk_file: str):
     """Delete chunk and compiled video, then increment current_chunk in state.json."""
-    # Delete the processed chunk from /queue
+    # Keep the processed chunk in /queue as requested
     if os.path.exists(chunk_file):
-        print(f"🗑️   Deleting chunk: {chunk_file}")
-        os.remove(chunk_file)
+        print(f"💾   Keeping chunk for review: {chunk_file}")
+        # os.remove(chunk_file)
 
     # Delete the compiled split-screen output
     if os.path.exists(UPLOAD_FILE):
-        print(f"🗑️   Deleting: {UPLOAD_FILE}")
+        print(f"🗑️   Deleting compiled output: {UPLOAD_FILE}")
         os.remove(UPLOAD_FILE)
 
     # Increment current_chunk

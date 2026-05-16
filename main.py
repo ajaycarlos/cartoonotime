@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-main.py — The Brainrot Pipeline Orchestrator  (V4.0 Pro)
+main.py — The Brainrot Pipeline Orchestrator  (V6.0 Complete Overhaul)
 Processes exactly ONE chunk per execution:
 
   1. Security check (API_AUTH_TOKEN env var)
@@ -106,8 +106,8 @@ def run_script(name: str, path: str):
 # ─────────────────────────────────────────────
 def main():
     print("=" * 60)
-    print("   🧠  BRAINROT PIPELINE  —  V4.0 Pro")
-    print("   🤖  AI Tracking & Subtitles Active")
+    print("   🧠  BRAINROT PIPELINE  —  V6.0 Complete Overhaul")
+    print("   🤖  Blur+Fit & Rotating Base Active")
     print("=" * 60)
 
     # ── Step 0: Security gate ──────────────────────────────────
@@ -122,10 +122,10 @@ def main():
         )
         sys.exit(1)
 
-    if not os.path.exists("satisfying_base.mp4"):
+    if not glob.glob("satisfying_base/*.mp4"):
         print(
-            "❌  satisfying_base.mp4 not found in project root.\n"
-            "    Place your satisfying video there before running.",
+            "❌  No satisfying videos found in satisfying_base/ directory.\n"
+            "    Place your satisfying videos (.mp4) there before running.",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -152,15 +152,15 @@ def main():
         title   = state.get("original_title", "?")
         print(f"\n📬  Queue ready — chunk {current}/{total}  |  {title!r}")
 
-    # ── Step 3: Edit (compose 75/25 split-screen, AI pan + subtitles) ────
-    run_script("Smart Editor V4.0 (AI Track + Subtitles + 75/25)", SCRIPTS["editor"])
+    # ── Step 3: Edit (compose 75/25 split-screen, Blur+Fit + subtitles) ────
+    run_script("Smart Editor V6.0 (Blur+Fit + Rotating Base + Subtitles)", SCRIPTS["editor"])
 
     # ── Step 4: Upload + open browser + advance state ─────────
     run_script("Uploader", SCRIPTS["uploader"])
 
     # ── Done ──────────────────────────────────────────────────
     print("\n" + "=" * 60)
-    print("   ✅  ONE chunk processed  [V4.0 Pro]. YouTube Studio should be open.")
+    print("   ✅  ONE chunk processed  [V6.0]. YouTube Studio should be open.")
     print("       Review the draft, then run main.py again for next chunk.")
     print("=" * 60 + "\n")
     sys.exit(0)

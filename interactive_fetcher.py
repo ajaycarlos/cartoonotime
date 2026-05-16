@@ -6,7 +6,7 @@ downloads the highest-resolution MP4 available, opens it in
 the system video player, then asks the user where the real
 content begins so the intro can be skipped.
 
-Slices the video sequentially into 170-second chunks from the
+Slices the video sequentially into 60-second chunks from the
 user-defined start time using libx264 ultrafast re-encode to prevent
 NAL unit / keyframe freeze errors.  Writes state.json and deletes the
 original large file when done.
@@ -32,7 +32,7 @@ from internetarchive import get_item
 # ─────────────────────────────────────────────
 QUEUE_DIR        = "queue"
 STATE_FILE       = "state.json"
-CHUNK_DURATION_S = 170   # V4.0: 2 min 50 s — fixed NAL-unit re-encode
+CHUNK_DURATION_S = 60    # V6.0: 1 min — fast 60-second slices
 
 # Regex to extract an identifier from a full Archive.org URL or a bare identifier.
 # Handles:
@@ -277,7 +277,7 @@ def get_video_duration(path: str) -> float:
 
 def calculate_chunks(total_duration: float, start_time: float) -> int:
     """
-    How many full 170-second chunks fit between start_time and the end?
+    How many full 60-second chunks fit between start_time and the end?
     """
     usable = total_duration - start_time
     return max(0, math.floor(usable / CHUNK_DURATION_S))
@@ -289,7 +289,7 @@ def slice_chunks_sequential(
     num_chunks: int,
 ) -> list[str]:
     """
-    Slice num_chunks × 170-second segments sequentially from start_time.
+    Slice num_chunks × 60-second segments sequentially from start_time.
 
     CRITICAL (V4.0): Uses libx264 re-encode instead of -c copy to ensure
     every segment starts on a clean keyframe, eliminating the 13-second
@@ -389,11 +389,11 @@ def main():
         print(f"   Total duration  : {total_dur:.1f}s")
         print(f"   Intro skip      : {start_time:.1f}s")
         print(f"   Usable content  : {total_dur - start_time:.1f}s")
-        print(f"   170-s chunks    : {num_chunks}")
+        print(f"   60-s chunks     : {num_chunks}")
 
         if num_chunks == 0:
             print(
-                "\n⚠️   No full 170-second chunks fit after the intro.\n"
+                "\n⚠️   No full 60-second chunks fit after the intro.\n"
                 "     Choose a smaller start time or try another video.",
                 file=sys.stderr,
             )
