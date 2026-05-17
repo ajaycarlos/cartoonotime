@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-smart_editor.py — The Editor  (V6.0 Complete Overhaul)
+smart_editor.py — The Editor  (V6.1 + Hook Generator)
 Reads chunk_X.mp4 from /queue, applies a Blur+Fit top-panel effect,
 and composites it with a rotating bottom satisfying video.
 
@@ -38,6 +38,9 @@ import json
 import glob
 import subprocess
 
+from brainrot_subs import generate_brainrot_ass
+from hook_generator import apply_hook
+
 
 # ── Whisper ───────────────────────────────────────────────────────────────────
 try:
@@ -58,8 +61,10 @@ STATE_FILE        = "state.json"
 QUEUE_DIR         = "queue"
 SATISFYING_DIR    = "satisfying_base"
 OUTPUT_FILE       = "ready_to_upload.mp4"
+TEMP_HOOKED       = "temp_hooked.mp4"
 TEMP_AUDIO        = "temp_audio.wav"
 TEMP_SUBS         = "temp_subs.srt"
+TEMP_ASS          = "temp_brainrot.ass"
 TEMP_STACKED      = "temp_stacked.mp4"
 
 # Final output: 9:16 vertical Short
@@ -284,17 +289,14 @@ def run_pass1_stack(
 
 def run_pass2_subtitles(
     stacked_input: str,
-    srt_path:      str,
+    ass_path:      str,
     final_output:  str,
 ) -> None:
     """
     Pass 2: Burn subtitles onto the already-stacked 1080×1920 video.
-
-    MarginV=200 places the subtitle baseline 200 px from the bottom of the
-    screen — sitting cleanly inside the 480-px satisfying panel.
     """
     subtitle_vf = (
-        "subtitles=temp_subs.srt:force_style='Fontname=Arial,Fontsize=16,PrimaryColour=&H00FFFFFF,Outline=0,Shadow=0,BorderStyle=1,Alignment=2,MarginV=120'"
+        f"ass={ass_path}"
     )
 
     cmd = [
@@ -325,7 +327,7 @@ def process_video():
     total_chunks   = state.get("total_chunks", 5)
     original_title = state.get("original_title", "Unknown")
 
-    print(f"\n🎬  smart_editor V6.0 — Blur+Fit & Rotating Satisfying Base")
+    print(f"\n🎬  smart_editor V6.1 — Hook + Blur+Fit & Rotating Satisfying Base")
     print(f"    Processing chunk {current_chunk}/{total_chunks}")
     print(f"    Title: {original_title!r}")
     print(f"    Split: {TOP_H}px top (75%) / {BOT_H}px bottom (25%)")
@@ -343,16 +345,27 @@ def process_video():
     save_state(state)
 
     srt_path = TEMP_SUBS
+    ass_path = TEMP_ASS
     try:
-        # 4. Whisper subtitle generation
-        srt_ok = generate_srt(chunk_file, srt_path)
+        # ── Step 4: Apply Hook ──────────────────────────────────────────────────
+        # Prepend a 2.5-second AI-voiced visual teaser to the raw chunk.
+        # All downstream steps (Whisper, Pass 1, Pass 2) operate on this
+        # hooked video so the TTS voice-over gets transcribed & styled too.
+        apply_hook(chunk_file, TEMP_HOOKED)
+        working_file = TEMP_HOOKED   # everything below uses this
 
-        # 5. Pass 1 — Blur+Fit stack (no subtitles)
-        run_pass1_stack(chunk_file, selected_base, TEMP_STACKED)
+        # ── Step 5: Whisper subtitle generation ────────────────────────────────
+        srt_ok = generate_srt(working_file, srt_path)
 
-        # 6. Pass 2 — Burn subtitles (or copy if no SRT)
         if srt_ok and os.path.exists(srt_path):
-            run_pass2_subtitles(TEMP_STACKED, srt_path, OUTPUT_FILE)
+            generate_brainrot_ass(srt_path, ass_path)
+
+        # ── Step 6: Pass 1 — Blur+Fit stack (no subtitles) ────────────────────
+        run_pass1_stack(working_file, selected_base, TEMP_STACKED)
+
+        # ── Step 7: Pass 2 — Burn subtitles (or copy if no SRT) ───────────────
+        if srt_ok and os.path.exists(ass_path):
+            run_pass2_subtitles(TEMP_STACKED, ass_path, OUTPUT_FILE)
         else:
             print(f"\n⚙️   No subtitles — copying stacked output to {OUTPUT_FILE}")
             copy_cmd = [
@@ -369,8 +382,8 @@ def process_video():
         print(f"    Subtitles burned   : {'yes' if srt_ok else 'no'}")
 
     finally:
-        # 7. Cleanup all temp files
-        for tmp in (TEMP_AUDIO, TEMP_SUBS, TEMP_STACKED):
+        # 8. Cleanup all temp files (hook generator cleans its own temps)
+        for tmp in (TEMP_HOOKED, TEMP_AUDIO, TEMP_SUBS, TEMP_ASS, TEMP_STACKED):
             if os.path.exists(tmp):
                 os.remove(tmp)
                 print(f"   🗑️   Removed temp file: {tmp}")
@@ -383,5 +396,5 @@ if __name__ == "__main__":
     try:
         process_video()
     except Exception as exc:
-        print(f"\n❌  smart_editor V6.0 failed: {exc}", file=sys.stderr)
+        print(f"\n❌  smart_editor V6.1 failed: {exc}", file=sys.stderr)
         sys.exit(1)

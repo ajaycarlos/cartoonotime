@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """
-main.py — The Brainrot Pipeline Orchestrator  (V6.0 Complete Overhaul)
+main.py — The Brainrot Pipeline Orchestrator  (V7.0 AI Director Update)
 Processes exactly ONE chunk per execution:
 
-  1. Security check (API_AUTH_TOKEN env var)
-  2. If /queue is empty → run interactive_fetcher.py
-     (PAUSES the pipeline to ask the user for their intro start time)
+  1. Security check (API_AUTH_TOKEN & GEMINI_API_KEY env vars)
+  2. If /queue is empty → prompt for YouTube URL & run ai_director.py
   3. Run smart_editor.py to compose the 75/25 split-screen video
   4. Run yt_uploader_v2.py to upload, open Studio, and advance state
 
@@ -19,6 +18,9 @@ import json
 import glob
 import subprocess
 
+from dotenv import load_dotenv
+load_dotenv()
+
 
 # ─────────────────────────────────────────────
 # Constants
@@ -27,7 +29,7 @@ STATE_FILE  = "state.json"
 QUEUE_DIR   = "queue"
 
 SCRIPTS = {
-    "fetcher":  "interactive_fetcher.py",
+    "fetcher":  "ai_director.py",
     "editor":   "smart_editor.py",
     "uploader": "yt_uploader_v2.py",
 }
@@ -51,7 +53,17 @@ def verify_auth_token():
             file=sys.stderr,
         )
         sys.exit(1)
-    print("🔒  Security check passed.")
+
+    if not os.environ.get("GEMINI_API_KEY"):
+        print(
+            "\n🤖  Security Error: GEMINI_API_KEY is not set.\n"
+            "    This pipeline requires Gemini AI for the AI Director.\n"
+            "    Run:  export GEMINI_API_KEY='your_key' or add it to .env",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    print("🔒  Security checks passed (Auth Token & Gemini Key).")
 
 
 # ─────────────────────────────────────────────
@@ -74,22 +86,25 @@ def read_state() -> dict:
 # ─────────────────────────────────────────────
 # Script runner
 # ─────────────────────────────────────────────
-def run_script(name: str, path: str):
+def run_script(name: str, path: str, args: list[str] = None):
     """
     Run a child Python script and propagate any non-zero exit code.
 
     stdin/stdout/stderr are intentionally inherited from the parent
     process (default when no redirection args are passed) so that:
-      • interactive_fetcher.py can receive BOTH terminal prompts:
-          1. The Archive.org URL / identifier input
-          2. The intro-skip timestamp input
+      • Scripts can receive terminal prompts
       • tqdm progress bars and all print() output render correctly.
     """
     print(f"\n{'─' * 60}")
     print(f"▶  Running {name}: {path}")
     print(f"{'─' * 60}")
+    
+    cmd = [sys.executable, path]
+    if args:
+        cmd.extend(args)
+
     result = subprocess.run(
-        [sys.executable, path],
+        cmd,
         stdin=None,   # explicitly inherit the parent’s stdin
     )
     if result.returncode != 0:
@@ -106,8 +121,8 @@ def run_script(name: str, path: str):
 # ─────────────────────────────────────────────
 def main():
     print("=" * 60)
-    print("   🧠  BRAINROT PIPELINE  —  V6.0 Complete Overhaul")
-    print("   🤖  Blur+Fit & Rotating Base Active")
+    print("   🧠  BRAINROT PIPELINE  —  V7.0 AI Director Update")
+    print("   🤖  Gemini AI Slicing + Blur/Fit Active")
     print("=" * 60)
 
     # ── Step 0: Security gate ──────────────────────────────────
@@ -137,14 +152,14 @@ def main():
 
     if needs_fetch:
         print("\n💭  Queue is empty (or no state.json found).")
-        print(
-            "    Running interactive_fetcher.py…\n"
-            "    ⚠️   You will be asked for TWO inputs:\n"
-            "         1️⃣  The Archive.org URL or item identifier\n"
-            "         2️⃣  The exact second where the cartoon content begins"
-        )
-        # interactive_fetcher reads stdin twice → run as inherited process
-        run_script("Interactive Fetcher", SCRIPTS["fetcher"])
+        
+        url = input("    🔗  Enter the YouTube video URL to process: ").strip()
+        if not url:
+            print("    ❌  No URL provided. Exiting.", file=sys.stderr)
+            sys.exit(1)
+            
+        print("    Running ai_director.py…")
+        run_script("AI Director", SCRIPTS["fetcher"], args=[url])
     else:
         state   = read_state()
         current = state.get("current_chunk", 1)

@@ -8,3 +8,5 @@ client_secrets.json
 
 *.mp4
 temp_raw/
+
+.env
