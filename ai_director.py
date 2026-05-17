@@ -485,6 +485,7 @@ def update_state(
     Resets:    current_chunk → 1  (smart_editor always starts from 1)
     """
     state = dict(existing_state)          # shallow copy — keep satisfying_index
+    state.pop("use_satisfying_base", None) # clear layout choice for the new project
     state["original_title"]  = video_title
     state["total_chunks"]    = total_chunks
     state["current_chunk"]   = current_chunk

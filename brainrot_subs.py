@@ -36,7 +36,7 @@ WrapStyle: 1
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Brainrot,Arial Black,24,&H0000FFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,4,0,2,10,10,150,1
+Style: Brainrot,Arial Black,40,&H0000FFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,4,0,2,10,10,150,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -59,10 +59,12 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         words = text_block.split()
         if not words:
             continue
-            
+
+        # Strictly group into blocks of 1–2 words so text cycles rapidly
+        MAX_WORDS_PER_CHUNK = 2
         chunks = []
-        for i in range(0, len(words), 2):
-            chunks.append(" ".join(words[i:i+2]))
+        for i in range(0, len(words), MAX_WORDS_PER_CHUNK):
+            chunks.append(" ".join(words[i:i + MAX_WORDS_PER_CHUNK]))
             
         num_chunks = len(chunks)
         duration = end_sec - start_sec

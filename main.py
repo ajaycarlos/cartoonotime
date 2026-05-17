@@ -83,6 +83,27 @@ def read_state() -> dict:
         return json.load(f)
 
 
+def prompt_and_save_layout_choice():
+    """Check state.json for layout preference, prompt if missing, and save."""
+    state = read_state()
+    if "use_satisfying_base" not in state:
+        while True:
+            answer = input("\n❓  Apply satisfying gameplay base split layer? (y/n): ").strip().lower()
+            if answer in ("y", "yes"):
+                print("    ✅  Layout: 75/25 split with satisfying base.")
+                state["use_satisfying_base"] = True
+                break
+            elif answer in ("n", "no"):
+                print("    ✅  Layout: Full 1080×1920 canvas (no satisfying base).")
+                state["use_satisfying_base"] = False
+                break
+            else:
+                print("    ⚠️   Please enter 'y' or 'n'.")
+        
+        with open(STATE_FILE, "w") as f:
+            json.dump(state, f, indent=4)
+
+
 # ─────────────────────────────────────────────
 # Script runner
 # ─────────────────────────────────────────────
@@ -168,7 +189,8 @@ def main():
         print(f"\n📬  Queue ready — chunk {current}/{total}  |  {title!r}")
 
     # ── Step 3: Edit (compose 75/25 split-screen, Blur+Fit + subtitles) ────
-    run_script("Smart Editor V6.0 (Blur+Fit + Rotating Base + Subtitles)", SCRIPTS["editor"])
+    prompt_and_save_layout_choice()
+    run_script("Smart Editor V7.1 (Widescreen Hybrid Zoom + Dynamic Layout)", SCRIPTS["editor"])
 
     # ── Step 4: Upload + open browser + advance state ─────────
     run_script("Uploader", SCRIPTS["uploader"])

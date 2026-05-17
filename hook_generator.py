@@ -5,8 +5,8 @@ hook_generator.py — Visual Teaser + Edge TTS Hook Prepender
 Generates a 2.5-second "hook" clip that is prepended to the start of
 every processed chunk.  The hook consists of:
 
-  • A TTS voice-over (en-US-ChristopherNeural, high-energy male) with a
-    randomly selected brainrot line.
+  • A TTS voice-over (en-US-GuyNeural, Microsoft premium gaming voice) with a
+    randomly selected hook phrase (loaded from hooks.txt or built-in fallback).
   • A silent teaser clip extracted from near the END of the video — so
     the viewer gets a flash of the climax before seeing it in context.
   • The voice-over replaces / truncates the teaser's original audio so
@@ -33,8 +33,13 @@ import tempfile
 import edge_tts
 
 
-# ── Brainrot hook lines ────────────────────────────────────────────────────────
-HOOK_LINES = [
+# ── Local hooks.txt loader ─────────────────────────────────────────────────────
+# Reads hook phrases from hooks.txt in the project root directory.
+# Falls back to the built-in list if the file is missing or empty.
+
+HOOKS_FILE = "hooks.txt"
+
+_FALLBACK_HOOK_LINES = [
     "Wait for the end!",
     "You won't believe what happens next!",
     "Bro is actually cooked.",
@@ -45,8 +50,25 @@ HOOK_LINES = [
     "Don't skip — the best part is at the end!",
 ]
 
-# Voice to use — en-US-ChristopherNeural is a high-energy, clear male voice
-TTS_VOICE = "en-US-ChristopherNeural"
+
+def _load_hook_lines() -> list[str]:
+    """Load hook phrases from HOOKS_FILE; fall back to built-in list."""
+    hooks_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), HOOKS_FILE)
+    try:
+        with open(hooks_path, "r", encoding="utf-8") as fh:
+            lines = [ln.strip() for ln in fh if ln.strip() and not ln.startswith("#")]
+        if lines:
+            print(f"   📄  Loaded {len(lines)} hook(s) from {HOOKS_FILE}")
+            return lines
+        else:
+            print(f"   ⚠️   {HOOKS_FILE} is empty — using built-in fallback hooks.")
+    except FileNotFoundError:
+        print(f"   ⚠️   {HOOKS_FILE} not found — using built-in fallback hooks.")
+    return _FALLBACK_HOOK_LINES
+
+
+# Voice to use — en-US-GuyNeural is Microsoft's premium gaming/streamer voice
+TTS_VOICE = "en-US-GuyNeural"
 
 # Duration of the teaser visual clip (seconds)
 HOOK_DURATION = 2.5
@@ -66,7 +88,8 @@ async def _tts_to_file(text: str, output_path: str) -> None:
 
 def generate_tts_audio(text: str, output_audio_path: str) -> None:
     """
-    Generate TTS audio using en-US-ChristopherNeural via edge_tts.
+    Generate TTS audio using en-US-GuyNeural (Microsoft premium gaming voice)
+    via edge_tts.
 
     Args:
         text:              The line to speak.
@@ -205,7 +228,8 @@ def apply_hook(input_video: str, output_video: str) -> None:
         input_video:  Path to the raw source chunk (e.g. queue/chunk_1.mp4).
         output_video: Destination path for the hooked video.
     """
-    hook_line    = random.choice(HOOK_LINES)
+    hook_lines   = _load_hook_lines()
+    hook_line    = random.choice(hook_lines)
     temp_audio   = "temp_hook_audio.mp3"
     temp_teaser  = "temp_teaser_visual.mp4"
     temp_hook    = "temp_hook_final.mp4"

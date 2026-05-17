@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-smart_editor.py — The Editor  (V6.1 + Hook Generator)
+smart_editor.py — The Editor  (V7.1 + Hook Generator + Widescreen Hybrid Zoom)
 Reads chunk_X.mp4 from /queue, applies a Blur+Fit top-panel effect,
 and composites it with a rotating bottom satisfying video.
 
@@ -225,63 +225,88 @@ def generate_srt(chunk_path: str, srt_path: str) -> bool:
 # Two-Pass FFmpeg Pipeline
 # ─────────────────────────────────────────────
 def run_pass1_stack(
-    cartoon_chunk: str,
-    base_video:    str,
-    stacked_out:   str,
+    cartoon_chunk:       str,
+    stacked_out:         str,
+    use_satisfying_base: bool,
+    base_video:          str = "",
 ) -> None:
     """
-    Pass 1 — Blur + Fit top panel + satisfying bottom panel → vstack.
+    Pass 1 — Widescreen Hybrid Zoom + Blur+Fit composite → stacked_out.
 
-    Filter graph:
-      [0:v] → blurred full-bleed background (top 1080×1440)
-      [0:v] → fitted foreground overlay, centred on blur_bg
-      [blur_bg][fg] → overlay → [top_half]
-      [1:v] → scaled + centre-cropped to 1080×480 → [bottom_half]
-      [top_half][bottom_half] → vstack → [stacked]
+    Path A (use_satisfying_base=True):
+      • Container : 1080×1440 (top) + 1080×480 (satisfying bottom) = 1080×1920
+      • Background: blurred, fills 1080×1440
+      • Foreground: 5% left/right crop → scale to 1080 wide → centre overlay
+      • Bottom     : satisfying video scaled/cropped to 1080×480, vstack'd below
 
-    Output is written to stacked_out (temp_stacked.mp4).
+    Path B (use_satisfying_base=False):
+      • Container : 1080×1920 full canvas
+      • Background: blurred, fills 1080×1920
+      • Foreground: same 5% left/right crop → scale to 1080 → centre overlay
+      • No satisfying video imported or overlaid.
+
     NO subtitle filter is applied here.
     """
-    filter_complex = (
-        # ── Top-half: blurred background ──────────────────────────────────────
-        "[0:v]scale=1080:1440:force_original_aspect_ratio=increase,"
-        "crop=1080:1440,boxblur=20:5[blur_bg];"
-        # ── Top-half: fitted foreground ───────────────────────────────────────
-        "[0:v]scale=1080:1440:force_original_aspect_ratio=decrease[fg];"
-        # ── Composite ─────────────────────────────────────────────────────────
-        "[blur_bg][fg]overlay=(W-w)/2:(H-h)/2[top_half];"
-        # ── Bottom-half: satisfying base ─────────────────────────────────────
-        f"[1:v]scale=1080:-1,crop=1080:480:(in_w-1080)/2:(in_h-480)/2[bottom_half];"
-        # ── Vertical stack ────────────────────────────────────────────────────
-        "[top_half][bottom_half]vstack=inputs=2[stacked]"
-    )
+    if use_satisfying_base:
+        # ── Path A: 75/25 split (1080×1440 top + 1080×480 satisfying base) ──
+        filter_complex = (
+            # Blurred background fills the 1080×1440 top container
+            "[0:v]scale=1080:1440:force_original_aspect_ratio=increase,"
+            "crop=1080:1440,boxblur=20:5[blur_bg];"
+            # Hybrid zoom: crop 5% off each side, then scale to 1080 wide
+            "[0:v]crop=iw*0.9:ih:iw*0.05:0,scale=1080:-1[fg];"
+            # Composite fg centred on the 1080×1440 blurred background
+            "[blur_bg][fg]overlay=(W-w)/2:(H-h)/2[top_half];"
+            # Satisfying base: scale then centre-crop to 1080×480
+            "[1:v]scale=1080:-1,crop=1080:480:(in_w-1080)/2:(in_h-480)/2[bottom_half];"
+            # Vertical stack → full 1080×1920 output
+            "[top_half][bottom_half]vstack=inputs=2[stacked]"
+        )
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", cartoon_chunk,
+            "-i", base_video,
+            "-filter_complex", filter_complex,
+            "-map", "[stacked]",
+            "-map", "0:a",
+            "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-crf", "23",
+            "-c:a", "aac",
+            "-b:a", "128k",
+            "-threads", "4",
+            "-shortest",
+            stacked_out,
+        ]
+        print(f"\n⚙️   Pass 1 — Path A (Split + Satisfying Base) → {stacked_out}")
+        print("    Base video : " + base_video)
+    else:
+        # ── Path B: Full 1080×1920 canvas — no satisfying base ────────────────
+        filter_complex = (
+            # Blurred background fills the full 1080×1920 canvas
+            "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,"
+            "crop=1080:1920,boxblur=20:5[blur_bg];"
+            # Hybrid zoom: crop 5% off each side, then scale to 1080 wide
+            "[0:v]crop=iw*0.9:ih:iw*0.05:0,scale=1080:-1[fg];"
+            # Composite fg centred on the full 1080×1920 blurred background
+            "[blur_bg][fg]overlay=(W-w)/2:(H-h)/2[stacked]"
+        )
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", cartoon_chunk,
+            "-filter_complex", filter_complex,
+            "-map", "[stacked]",
+            "-map", "0:a",
+            "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-crf", "23",
+            "-c:a", "aac",
+            "-b:a", "128k",
+            "-threads", "4",
+            stacked_out,
+        ]
+        print(f"\n⚙️   Pass 1 — Path B (Full Canvas, No Satisfying Base) → {stacked_out}")
 
-    # Audio: cartoon chunk only
-    cmd = [
-        "ffmpeg", "-y",
-        # Input 0: cartoon chunk
-        "-i", cartoon_chunk,
-        # Input 1: selected satisfying base video
-        "-i", base_video,
-        # Filter graph
-        "-filter_complex", filter_complex,
-        "-map", "[stacked]",
-        "-map", "0:a",
-        # Video codec
-        "-c:v", "libx264",
-        "-preset", "ultrafast",
-        "-crf", "23",
-        # Audio codec
-        "-c:a", "aac",
-        "-b:a", "128k",
-        # Hardware target: i3-3220
-        "-threads", "4",
-        "-shortest",
-        stacked_out,
-    ]
-
-    print(f"\n⚙️   Pass 1 — Blur+Fit stack → {stacked_out}")
-    print("    Base video : " + base_video)
     print()
     subprocess.run(cmd, check=True)
     print(f"   ✅  Pass 1 complete: {stacked_out}")
@@ -327,12 +352,19 @@ def process_video():
     total_chunks   = state.get("total_chunks", 5)
     original_title = state.get("original_title", "Unknown")
 
-    print(f"\n🎬  smart_editor V6.1 — Hook + Blur+Fit & Rotating Satisfying Base")
+    print(f"\n🎬  smart_editor V7.1 — Widescreen Hybrid Zoom + Dynamic Layout")
     print(f"    Processing chunk {current_chunk}/{total_chunks}")
     print(f"    Title: {original_title!r}")
-    print(f"    Split: {TOP_H}px top (75%) / {BOT_H}px bottom (25%)")
 
-    # 2. Locate cartoon chunk
+    # 2. Read layout choice from state (prompted in main.py)
+    use_satisfying_base = state.get("use_satisfying_base", True)
+
+    if use_satisfying_base:
+        print(f"    Split: {TOP_H}px top (75%) / {BOT_H}px bottom (25%)")
+    else:
+        print(f"    Canvas: {OUT_W}×{OUT_H} full vertical (no satisfying base)")
+
+    # 3. Locate cartoon chunk
     chunk_file = os.path.join(QUEUE_DIR, f"chunk_{current_chunk}.mp4")
     if not os.path.exists(chunk_file):
         raise FileNotFoundError(
@@ -340,30 +372,39 @@ def process_video():
             "Run interactive_fetcher.py or verify state.json."
         )
 
-    # 3. Select rotating satisfying base & persist incremented index
-    selected_base, state = select_satisfying_base(state)
-    save_state(state)
+    # 4. Select rotating satisfying base only when needed
+    if use_satisfying_base:
+        selected_base, state = select_satisfying_base(state)
+        save_state(state)
+    else:
+        selected_base = ""
+        save_state(state)   # still persist any other state changes
 
     srt_path = TEMP_SUBS
     ass_path = TEMP_ASS
     try:
-        # ── Step 4: Apply Hook ──────────────────────────────────────────────────
+        # ── Step 5: Apply Hook ──────────────────────────────────────────────────
         # Prepend a 2.5-second AI-voiced visual teaser to the raw chunk.
         # All downstream steps (Whisper, Pass 1, Pass 2) operate on this
         # hooked video so the TTS voice-over gets transcribed & styled too.
         apply_hook(chunk_file, TEMP_HOOKED)
         working_file = TEMP_HOOKED   # everything below uses this
 
-        # ── Step 5: Whisper subtitle generation ────────────────────────────────
+        # ── Step 6: Whisper subtitle generation ────────────────────────────────
         srt_ok = generate_srt(working_file, srt_path)
 
         if srt_ok and os.path.exists(srt_path):
             generate_brainrot_ass(srt_path, ass_path)
 
-        # ── Step 6: Pass 1 — Blur+Fit stack (no subtitles) ────────────────────
-        run_pass1_stack(working_file, selected_base, TEMP_STACKED)
+        # ── Step 7: Pass 1 — Hybrid Zoom + Blur+Fit (no subtitles) ───────────
+        run_pass1_stack(
+            cartoon_chunk=working_file,
+            stacked_out=TEMP_STACKED,
+            use_satisfying_base=use_satisfying_base,
+            base_video=selected_base,
+        )
 
-        # ── Step 7: Pass 2 — Burn subtitles (or copy if no SRT) ───────────────
+        # ── Step 8: Pass 2 — Burn subtitles (or copy if no SRT) ───────────────
         if srt_ok and os.path.exists(ass_path):
             run_pass2_subtitles(TEMP_STACKED, ass_path, OUTPUT_FILE)
         else:
@@ -377,12 +418,15 @@ def process_video():
             subprocess.run(copy_cmd, check=True)
 
         print(f"\n✅  Output written: {OUTPUT_FILE}")
-        print(f"    Top  (cartoon)     : {OUT_W} × {TOP_H}  [Blur+Fit]")
-        print(f"    Bottom (satisfying): {OUT_W} × {BOT_H}  [{os.path.basename(selected_base)}]")
+        if use_satisfying_base:
+            print(f"    Top  (cartoon)     : {OUT_W} × {TOP_H}  [Hybrid Zoom + Blur+Fit]")
+            print(f"    Bottom (satisfying): {OUT_W} × {BOT_H}  [{os.path.basename(selected_base)}]")
+        else:
+            print(f"    Canvas             : {OUT_W} × {OUT_H}  [Hybrid Zoom + Blur+Fit, full]")
         print(f"    Subtitles burned   : {'yes' if srt_ok else 'no'}")
 
     finally:
-        # 8. Cleanup all temp files (hook generator cleans its own temps)
+        # 9. Cleanup all temp files (hook generator cleans its own temps)
         for tmp in (TEMP_HOOKED, TEMP_AUDIO, TEMP_SUBS, TEMP_ASS, TEMP_STACKED):
             if os.path.exists(tmp):
                 os.remove(tmp)
@@ -396,5 +440,5 @@ if __name__ == "__main__":
     try:
         process_video()
     except Exception as exc:
-        print(f"\n❌  smart_editor V6.1 failed: {exc}", file=sys.stderr)
+        print(f"\n❌  smart_editor V7.1 failed: {exc}", file=sys.stderr)
         sys.exit(1)
