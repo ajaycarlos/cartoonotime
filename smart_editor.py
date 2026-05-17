@@ -176,6 +176,9 @@ def generate_srt(chunk_path: str, srt_path: str) -> bool:
         "-vn",
         "-ar", "16000",
         "-ac", "1",
+        "-af", "aresample=async=1",
+        "-muxdelay", "0",
+        "-muxpreload", "0",
         TEMP_AUDIO,
     ]
     try:
@@ -291,16 +294,7 @@ def run_pass2_subtitles(
     screen — sitting cleanly inside the 480-px satisfying panel.
     """
     subtitle_vf = (
-        "subtitles=temp_subs.srt:force_style='"
-        "Fontname=Arial,"
-        "Fontsize=18,"
-        "PrimaryColour=&H00FFFFFF,"
-        "OutlineColour=&H00000000,"
-        "BorderStyle=1,"
-        "Outline=3,"
-        "Shadow=0,"
-        "Alignment=2,"
-        "MarginV=200'"
+        "subtitles=temp_subs.srt:force_style='Fontname=Arial,Fontsize=16,PrimaryColour=&H00FFFFFF,Outline=0,Shadow=0,BorderStyle=1,Alignment=2,MarginV=120'"
     )
 
     cmd = [
