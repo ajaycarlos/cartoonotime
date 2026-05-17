@@ -202,11 +202,24 @@ def main():
     print(f"    Source title: {original_title!r}")
 
     # 2. Compose title and description — clean organic template (no PART/brainrot tokens)
-    video_title = f"{original_title} 💀🗣️ #shorts"
-    video_description = (
-        f"The most insane moments from {original_title}!\n\n"
-        "Like & subscribe for more daily clips! 🎬"
-    )
+    chunk_str = str(current_chunk)
+    metadata = state.get("chunk_metadata", {}).get(chunk_str, {})
+    
+    ai_title = metadata.get("title", "").strip()
+    ai_desc = metadata.get("description", "").strip()
+    
+    if ai_title:
+        video_title = f"{ai_title} #shorts"
+    else:
+        video_title = f"{original_title} 💀🗣️ #shorts"
+        
+    if ai_desc:
+        video_description = ai_desc
+    else:
+        video_description = (
+            f"The most insane moments from {original_title}!\n\n"
+            "Like & subscribe for more daily clips! 🎬"
+        )
 
     # 3. Calculate schedule timestamp
     schedule_timestamp = calculate_next_upload_slot(state)

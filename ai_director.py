@@ -271,8 +271,18 @@ HH:MM:SS format to total seconds, e.g. 00:01:15.50 → 75.5).
 6. Clips must be self-contained — a viewer with no context of the full video \
 must be able to understand and enjoy it.
 
+Title Formatting Rules:
+- Human Tone Only: Never use typical AI corporate fluff words (e.g., Ultimate, Unbelievable, Insane, Shocking, Witness, Mastery). Write like a real millennial/Gen-Z creator or a clipping community account. Use natural sentence case or entirely lowercase formatting.
+- The Pipe Split (|): If a setup and a punchline are both compelling, use the pipe symbol to elegantly separate them (e.g., testing the 50 pros layout | he got cooked instantly).
+- Emoji Limits: Enforce a strict maximum cap of 1 to 2 emojis total per title, utilizing realistic high-engagement choices (💀, 😭, 🔥, 🥶, 🤡, 👁️).
+- No Spam: Do not include part numbers ("Part 1") or the word "brainrot" in the title or description.
+
+Description Formatting Rules:
+- Craft a brief 1-2 sentence contextual hook summarizing the moment without revealing the exact punchline ending.
+- Append a clean, un-spammy Call To Action: Like & subscribe for more daily clips! 🎬
+
 Return the output STRICTLY as a JSON array of objects, like this:
-[{"title": "Crazy Car Jump", "start_time": 15.5, "end_time": 58.2}]
+[{"title": "testing the 50 pros layout | he got cooked instantly 💀", "description": "this guy thought he could outsmart the pros but things went horribly wrong.\\n\\nLike & subscribe for more daily clips! 🎬", "start_time": 15.5, "end_time": 58.2}]
 
 Do not output markdown, just the raw JSON.\
 """
@@ -343,6 +353,7 @@ def analyse_transcript(transcript: str, max_clips: int = 5) -> list[dict]:
     for i, clip in enumerate(clips):
         try:
             title      = str(clip.get("title", f"Clip {i+1}")).strip()
+            description = str(clip.get("description", "")).strip()
             start_time = float(clip["start_time"])
             end_time   = float(clip["end_time"])
         except (KeyError, TypeError, ValueError) as exc:
@@ -362,7 +373,7 @@ def analyse_transcript(transcript: str, max_clips: int = 5) -> list[dict]:
                   f"duration {duration:.1f}s > {CLIP_MAX_SEC}s maximum.", file=sys.stderr)
             continue
 
-        valid_clips.append({"title": title, "start_time": start_time, "end_time": end_time})
+        valid_clips.append({"title": title, "description": description, "start_time": start_time, "end_time": end_time})
 
     if not valid_clips:
         raise RuntimeError(
@@ -415,6 +426,8 @@ def download_clip(url: str, clip: dict, output_path: str) -> bool:
         "--force-keyframes-at-cuts",
         # Prevent re-encoding the full video before slicing
         "--no-playlist",
+        # Force FFmpeg to aggressively reconnect upon server-side audio drops
+        "--downloader-args", "ffmpeg_i:-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
         # Rate-limit to be polite (adjust if needed)
         "--limit-rate", "5M",
         "-o", output_path,
@@ -476,6 +489,7 @@ def update_state(
     total_chunks:  int,
     current_chunk: int,
     existing_state: dict,
+    chunk_metadata: dict,
 ) -> dict:
     """
     Merge AI Director run results into existing state so smart_editor.py can
@@ -489,6 +503,7 @@ def update_state(
     state["original_title"]  = video_title
     state["total_chunks"]    = total_chunks
     state["current_chunk"]   = current_chunk
+    state["chunk_metadata"]  = chunk_metadata
     state["ai_director_run"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
     return state
 
@@ -523,6 +538,7 @@ def run(url: str, max_clips: int = 5, output_dir: str = QUEUE_DIR,
     # ── Step 3: Download each clip ────────────────────────────────────────────
     existing_state = load_state()
     downloaded_chunks: list[int] = []
+    chunk_metadata = {}
 
     print(f"\n🚀  Downloading {len(clips)} clip(s) into '{output_dir}/'…")
 
@@ -537,6 +553,12 @@ def run(url: str, max_clips: int = 5, output_dir: str = QUEUE_DIR,
         success = download_clip(url, clip, output_path)
         if success:
             downloaded_chunks.append(i)
+            chunk_metadata[str(i)] = {
+                "title": clip["title"],
+                "description": clip.get("description", ""),
+                "start_time": clip["start_time"],
+                "end_time": clip["end_time"]
+            }
         else:
             print(f"    ⚠️   Clip {i} failed — it will be absent from the queue.",
                   file=sys.stderr)
@@ -552,6 +574,7 @@ def run(url: str, max_clips: int = 5, output_dir: str = QUEUE_DIR,
         total_chunks  = total,
         current_chunk = 1,           # smart_editor.py always starts at chunk 1
         existing_state= existing_state,
+        chunk_metadata= chunk_metadata,
     )
     save_state(state)
 

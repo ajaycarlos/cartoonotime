@@ -152,8 +152,12 @@ def _extract_teaser_visual(input_video: str, teaser_path: str) -> None:
 def _merge_audio_visual(teaser_video: str, tts_audio: str, hook_out: str) -> None:
     """
     Merge teaser_video (silent) + tts_audio.
-    The shortest stream wins (-shortest) so the video is truncated to
-    exactly match the TTS audio duration.
+
+    Audio Fix: Re-encode the TTS audio to AAC at a normalized 48 kHz stereo
+    baseline so it is packet-compatible with the main chunk's audio when the
+    two clips are later joined by the concat filter.  We still use -shortest
+    here only to align the silent video to the TTS duration — this is safe
+    because the teaser visual has no useful audio anyway.
     """
     cmd = [
         "ffmpeg", "-y",
@@ -164,7 +168,9 @@ def _merge_audio_visual(teaser_video: str, tts_audio: str, hook_out: str) -> Non
         "-c:v", "copy",
         "-c:a", "aac",
         "-b:a", "128k",
-        "-shortest",                # truncate video to audio length
+        "-ar", "48000",             # normalize to 48 kHz
+        "-ac", "2",                 # normalize to stereo
+        "-shortest",                # truncate silent visual to TTS length
         "-threads", "4",
         hook_out,
     ]
@@ -174,21 +180,25 @@ def _merge_audio_visual(teaser_video: str, tts_audio: str, hook_out: str) -> Non
 
 def _concat_hook_and_video(hook_clip: str, main_video: str, output_video: str) -> None:
     """
-    Concatenate hook_clip (2.5 s) followed by main_video using the
-    FFmpeg concat demuxer.  A temporary concat list file is used and
-    deleted immediately after.
+    Concatenate hook_clip (2.5 s) followed by main_video.
 
-    Both clips must share the same resolution, frame-rate, and codec;
-    since hook_clip is re-encoded in _merge_audio_visual this is safe
-    as long as the caller passes the original chunk (same encoding
-    settings from smart_editor Pass 1 / raw chunk).
+    Audio Fix: Both audio streams are resampled to a common 48 kHz / stereo /
+    fltp descriptor *before* reaching the concat node.  Without this step the
+    FFmpeg concat filter silently terminates the mixed audio output whenever
+    the two input streams differ in sample-rate, channel-count, or sample-fmt
+    — which was causing the audio to drop to absolute silence at ~15 seconds.
 
-    We use the filter_complex concat filter instead of the demuxer to
-    handle potential codec/timebase differences gracefully.
+    The `aresample=48000` + `aformat` pads guarantee that both audio segments
+    are packet-compatible and that the output audio stream is continuous for
+    the full container duration with no early EOF.
     """
-    # Use filter_complex concat so we handle any codec/timebase mismatch
+    # Resample both audio inputs to identical specs before concat.
+    # [0:a] = hook clip (already 48kHz/stereo from _merge_audio_visual)
+    # [1:a] = main raw chunk (unknown rate — normalize it here)
     filter_complex = (
-        "[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[vout][aout]"
+        "[0:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[a0];"
+        "[1:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[a1];"
+        "[0:v][a0][1:v][a1]concat=n=2:v=1:a=1[vout][aout]"
     )
     cmd = [
         "ffmpeg", "-y",
@@ -202,6 +212,8 @@ def _concat_hook_and_video(hook_clip: str, main_video: str, output_video: str) -
         "-crf", "23",
         "-c:a", "aac",
         "-b:a", "128k",
+        "-ar", "48000",
+        "-ac", "2",
         "-threads", "4",
         output_video,
     ]

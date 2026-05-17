@@ -265,6 +265,7 @@ def run_pass1_stack(
         cmd = [
             "ffmpeg", "-y",
             "-i", cartoon_chunk,
+            "-stream_loop", "-1",    # loop satisfying base so it never runs short
             "-i", base_video,
             "-filter_complex", filter_complex,
             "-map", "[stacked]",
@@ -275,7 +276,11 @@ def run_pass1_stack(
             "-c:a", "aac",
             "-b:a", "128k",
             "-threads", "4",
-            "-shortest",
+            # NOTE: -shortest intentionally REMOVED here.
+            # Output duration is driven by stream 0 (cartoon chunk).
+            # -stream_loop -1 on the satisfying base guarantees it never
+            # exhausts before the cartoon audio does, so the audio track
+            # stays continuous for the full container duration.
             stacked_out,
         ]
         print(f"\n⚙️   Pass 1 — Path A (Split + Satisfying Base) → {stacked_out}")
