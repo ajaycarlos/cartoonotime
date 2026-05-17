@@ -5,7 +5,7 @@ hook_generator.py — Visual Teaser + Edge TTS Hook Prepender
 Generates a 2.5-second "hook" clip that is prepended to the start of
 every processed chunk.  The hook consists of:
 
-  • A TTS voice-over (en-US-GuyNeural, Microsoft premium gaming voice) with a
+  • A TTS voice-over (en-GB-EthanNeural, Microsoft premium British narrator) with a
     randomly selected hook phrase (loaded from hooks.txt or built-in fallback).
   • A silent teaser clip extracted from near the END of the video — so
     the viewer gets a flash of the climax before seeing it in context.
@@ -67,8 +67,8 @@ def _load_hook_lines() -> list[str]:
     return _FALLBACK_HOOK_LINES
 
 
-# Voice to use — en-US-GuyNeural is Microsoft's premium gaming/streamer voice
-TTS_VOICE = "en-US-GuyNeural"
+# Voice to use — en-GB-EthanNeural is Microsoft's premium British male narrator
+TTS_VOICE = "en-GB-LibbyNeural"
 
 # Duration of the teaser visual clip (seconds)
 HOOK_DURATION = 2.5
@@ -88,7 +88,7 @@ async def _tts_to_file(text: str, output_path: str) -> None:
 
 def generate_tts_audio(text: str, output_audio_path: str) -> None:
     """
-    Generate TTS audio using en-US-GuyNeural (Microsoft premium gaming voice)
+    Generate TTS audio using en-GB-EthanNeural (Microsoft premium British narrator)
     via edge_tts.
 
     Args:

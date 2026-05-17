@@ -159,14 +159,11 @@ def main():
     print(f"\n📤  yt_uploader_v2 — Chunk {current_chunk}/{total_chunks}")
     print(f"    Source title: {original_title!r}")
 
-    # 2. Compose title and description per spec
-    video_title = (
-        f"PART {current_chunk} - {original_title} 💀🗣️ #shorts #brainrot"
-    )
+    # 2. Compose title and description — clean organic template (no PART/brainrot tokens)
+    video_title = f"{original_title} 💀🗣️ #shorts"
     video_description = (
-        f"Part {current_chunk} of {total_chunks}: {original_title}\n\n"
-        "Classic public-domain animation — no copyright issues.\n"
-        "Like & subscribe for daily brainrot! 💀"
+        f"The most insane moments from {original_title}!\n\n"
+        "Like & subscribe for more daily clips! 🎬"
     )
 
     # 3. Authenticate (reuse existing OAuth flow)
