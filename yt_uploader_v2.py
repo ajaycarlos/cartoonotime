@@ -12,6 +12,7 @@ import stat
 import json
 import webbrowser
 import sys
+from datetime import datetime, timedelta, timezone
 
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
@@ -74,10 +75,48 @@ def get_authenticated_service():
     return build(API_SERVICE_NAME, API_VERSION, credentials=credentials)
 
 
+def calculate_next_upload_slot(state: dict) -> str:
+    """
+    Calculates the next logical publish window based on the current local time 
+    and existing queue state. 
+    Returns an ISO 8601 string.
+    """
+    ist_tz = timezone(timedelta(hours=5, minutes=30))
+    now = datetime.now(ist_tz)
+    
+    last_scheduled_str = state.get("last_scheduled_time")
+    
+    future_queue_exists = False
+    if last_scheduled_str:
+        try:
+            last_scheduled = datetime.fromisoformat(last_scheduled_str)
+            if last_scheduled > now:
+                future_queue_exists = True
+        except ValueError:
+            pass
+
+    if future_queue_exists:
+        if last_scheduled.hour == 10 and last_scheduled.minute == 30:
+            target = last_scheduled.replace(hour=16, minute=30, second=0, microsecond=0)
+        else:
+            target = (last_scheduled + timedelta(days=1)).replace(hour=10, minute=30, second=0, microsecond=0)
+    else:
+        if now.hour < 10 or (now.hour == 10 and now.minute < 30):
+            target = now.replace(hour=10, minute=30, second=0, microsecond=0)
+        elif now.hour < 16 or (now.hour == 16 and now.minute < 40):
+            target = now.replace(hour=16, minute=30, second=0, microsecond=0)
+        else:
+            target = (now + timedelta(days=1)).replace(hour=10, minute=30, second=0, microsecond=0)
+            
+    target_iso = target.isoformat()
+    state["last_scheduled_time"] = target_iso
+    return target_iso
+
+
 # ─────────────────────────────────────────────
 # Upload
 # ─────────────────────────────────────────────
-def upload_video(youtube, file_path: str, title: str, description: str) -> str:
+def upload_video(youtube, file_path: str, title: str, description: str, schedule_timestamp: str = None) -> str:
     """
     Upload file_path as a private draft.
     Returns the video_id on success.
@@ -99,6 +138,9 @@ def upload_video(youtube, file_path: str, title: str, description: str) -> str:
             "selfDeclaredMadeForKids": False,
         },
     }
+    
+    if schedule_timestamp:
+        body["status"]["publishAt"] = schedule_timestamp
 
     insert_request = youtube.videos().insert(
         part=",".join(body.keys()),
@@ -166,11 +208,15 @@ def main():
         "Like & subscribe for more daily clips! 🎬"
     )
 
-    # 3. Authenticate (reuse existing OAuth flow)
+    # 3. Calculate schedule timestamp
+    schedule_timestamp = calculate_next_upload_slot(state)
+    print(f"📅 Scheduled upload slot allocated: {schedule_timestamp.replace('T', ' ')}")
+
+    # 4. Authenticate (reuse existing OAuth flow)
     youtube = get_authenticated_service()
 
-    # 4. Upload
-    video_id = upload_video(youtube, UPLOAD_FILE, video_title, video_description)
+    # 5. Upload
+    video_id = upload_video(youtube, UPLOAD_FILE, video_title, video_description, schedule_timestamp)
 
     # 5. Open YouTube Studio in browser for review
     studio_url = f"https://studio.youtube.com/video/{video_id}/edit"

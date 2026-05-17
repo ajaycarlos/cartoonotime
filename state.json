@@ -4,5 +4,6 @@
     "total_chunks": 5,
     "current_chunk": 2,
     "ai_director_run": "2026-05-17T10:09:11+0530",
-    "use_satisfying_base": false
+    "use_satisfying_base": false,
+    "last_scheduled_time": "2026-05-17T16:30:00+05:30"
 }
