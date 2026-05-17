@@ -162,7 +162,7 @@ def upload_video(youtube, file_path: str, title: str, description: str, schedule
 # ─────────────────────────────────────────────
 def cleanup_and_advance(state: dict, chunk_file: str):
     """Delete chunk and compiled video, then increment current_chunk in state.json."""
-    # Keep the processed chunk in /queue as requested
+    # Keep the processed chunk in /queue as requested unless queue is complete
     if os.path.exists(chunk_file):
         print(f"💾   Keeping chunk for review: {chunk_file}")
         # os.remove(chunk_file)
@@ -178,16 +178,54 @@ def cleanup_and_advance(state: dict, chunk_file: str):
 
     if current >= total:
         print("\n🎉 QUEUE COMPLETE! All scheduled chunks have been successfully pushed to YouTube.")
-        state["current_chunk"] = "COMPLETED"
+        
+        user_choice = input("❓ All chunks are uploaded! Do you want to perform a Smart Reset and delete local media assets? (y/n): ").strip().lower()
+        if user_choice in ['y', 'yes']:
+            # 1. Trigger Asset Cleanup
+            import glob
+            
+            # Delete residual chunk video files in queue/
+            for f in glob.glob(os.path.join(QUEUE_DIR, "*.mp4")):
+                try:
+                    os.remove(f)
+                except OSError:
+                    pass
+                    
+            # Delete lingering temp_* files and ready_to_upload.mp4 in root
+            for f in glob.glob("temp_*"):
+                try:
+                    os.remove(f)
+                except OSError:
+                    pass
+                    
+            if os.path.exists(UPLOAD_FILE):
+                try:
+                    os.remove(UPLOAD_FILE)
+                except OSError:
+                    pass
+
+            # 2. Smart State Wipe (Preserve last_scheduled_time)
+            keys_to_wipe = ['original_title', 'total_chunks', 'current_chunk', 'chunk_metadata']
+            for key in keys_to_wipe:
+                if key in state:
+                    del state[key]
+                    
+            print("🧹 Queue complete: Video assets cleared and clip metadata reset. Master schedule tracking preserved.")
+        else:
+            print("💾 Assets and metadata preserved. You can safely review your drafts in YouTube Studio or rerun chunks if needed.")
+
+        next_chunk = "COMPLETED"
+        total_str = str(total)
     else:
         state["current_chunk"] = current + 1
+        next_chunk = state["current_chunk"]
+        total_str  = str(total)
 
     with open(STATE_FILE, "w") as f:
         json.dump(state, f, indent=4)
 
-    next_chunk = state["current_chunk"]
-    total_str  = state.get("total_chunks", "?")
-    print(f"📝  state.json updated → current_chunk={next_chunk}/{total_str}")
+    if current < total:
+        print(f"📝  state.json updated → current_chunk={next_chunk}/{total_str}")
 
 
 # ─────────────────────────────────────────────
