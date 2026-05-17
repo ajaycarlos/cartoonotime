@@ -172,14 +172,22 @@ def cleanup_and_advance(state: dict, chunk_file: str):
         print(f"🗑️   Deleting compiled output: {UPLOAD_FILE}")
         os.remove(UPLOAD_FILE)
 
-    # Increment current_chunk
-    state["current_chunk"] = state.get("current_chunk", 1) + 1
+    # Increment current_chunk or mark as complete
+    current = state.get("current_chunk", 1)
+    total = state.get("total_chunks", 1)
+
+    if current >= total:
+        print("\n🎉 QUEUE COMPLETE! All scheduled chunks have been successfully pushed to YouTube.")
+        state["current_chunk"] = "COMPLETED"
+    else:
+        state["current_chunk"] = current + 1
+
     with open(STATE_FILE, "w") as f:
         json.dump(state, f, indent=4)
 
     next_chunk = state["current_chunk"]
-    total      = state.get("total_chunks", "?")
-    print(f"📝  state.json updated → current_chunk={next_chunk}/{total}")
+    total_str  = state.get("total_chunks", "?")
+    print(f"📝  state.json updated → current_chunk={next_chunk}/{total_str}")
 
 
 # ─────────────────────────────────────────────

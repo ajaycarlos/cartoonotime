@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-main.py — The Brainrot Pipeline Orchestrator  (V7.0 AI Director Update)
+main.py — The Brainrot Pipeline Orchestrator  ([V7.5] AI Director Update)
 Processes exactly ONE chunk per execution:
 
   1. Security check (API_AUTH_TOKEN & GEMINI_API_KEY env vars)
@@ -142,7 +142,7 @@ def run_script(name: str, path: str, args: list[str] = None):
 # ─────────────────────────────────────────────
 def main():
     print("=" * 60)
-    print("   🧠  BRAINROT PIPELINE  —  V7.0 AI Director Update")
+    print("   🧠  BRAINROT PIPELINE  —  [V7.5] AI Director Update")
     print("   🤖  Gemini AI Slicing + Blur/Fit Active")
     print("=" * 60)
 
@@ -171,8 +171,13 @@ def main():
     # ── Step 2: Fetch if queue is empty ───────────────────────
     needs_fetch = queue_is_empty() or not state_exists()
 
+    if not needs_fetch:
+        state_data = read_state()
+        if str(state_data.get("current_chunk")) == "COMPLETED":
+            needs_fetch = True
+
     if needs_fetch:
-        print("\n💭  Queue is empty (or no state.json found).")
+        print("\n💭  Queue is empty, or previous queue is completed (or no state.json found).")
         
         url = input("    🔗  Enter the YouTube video URL to process: ").strip()
         if not url:
@@ -190,14 +195,14 @@ def main():
 
     # ── Step 3: Edit (compose 75/25 split-screen, Blur+Fit + subtitles) ────
     prompt_and_save_layout_choice()
-    run_script("Smart Editor V7.1 (Widescreen Hybrid Zoom + Dynamic Layout)", SCRIPTS["editor"])
+    run_script("Smart Editor [V7.5] (Widescreen Hybrid Zoom + Dynamic Layout)", SCRIPTS["editor"])
 
     # ── Step 4: Upload + open browser + advance state ─────────
     run_script("Uploader", SCRIPTS["uploader"])
 
     # ── Done ──────────────────────────────────────────────────
     print("\n" + "=" * 60)
-    print("   ✅  ONE chunk processed  [V6.0]. YouTube Studio should be open.")
+    print("   ✅  ONE chunk processed  [V7.5]. YouTube Studio should be open.")
     print("       Review the draft, then run main.py again for next chunk.")
     print("=" * 60 + "\n")
     sys.exit(0)
