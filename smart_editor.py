@@ -392,7 +392,7 @@ def process_video():
         # Prepend a 2.5-second AI-voiced visual teaser to the raw chunk.
         # All downstream steps (Whisper, Pass 1, Pass 2) operate on this
         # hooked video so the TTS voice-over gets transcribed & styled too.
-        apply_hook(chunk_file, TEMP_HOOKED)
+        apply_hook(chunk_file, TEMP_HOOKED, chunk_index=current_chunk)
         working_file = TEMP_HOOKED   # everything below uses this
 
         # ── Step 6: Whisper subtitle generation ────────────────────────────────

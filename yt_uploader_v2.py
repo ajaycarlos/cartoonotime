@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """
-yt_uploader_v2.py — The Uploader & Browser Launcher
+yt_uploader_v2.py — The Uploader & Browser Launcher  [V7.8]
 Reads state.json, uploads ready_to_upload.mp4 as a private draft,
 opens YouTube Studio for review, then cleans up and increments state.
 
 Security: OAuth2 token file is chmod 600; all credentials stay local.
+
+V7.8 changes:
+  • Description attribution: auto-appends "Voice by elevenlabs.io"
+    to every upload's description. The video title is NEVER modified.
 """
 
 import os
@@ -266,6 +270,12 @@ def main():
             f"The most insane moments from {original_title}!\n\n"
             "Like & subscribe for more daily clips! 🎬"
         )
+
+    # ── Attribution enforcement (V7.8) ─────────────────────────────────────
+    # ABSOLUTE CONSTRAINT: the title string must remain clean and untouched.
+    # Attribution lives exclusively inside the description field.
+    ELEVENLABS_ATTRIBUTION = "\n\nVoice by elevenlabs.io"
+    video_description = video_description + ELEVENLABS_ATTRIBUTION
 
     # 3. Calculate schedule timestamp
     schedule_timestamp = calculate_next_upload_slot(state)

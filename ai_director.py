@@ -256,8 +256,9 @@ def fetch_transcript(url: str) -> tuple[str, str]:
 
 # ── System instruction sent to Gemini ────────────────────────────────────────
 _SYSTEM_PROMPT = """\
-You are an expert YouTube Shorts editor. Read the following video transcript. \
-Find all highly engaging, self-contained segments that would make viral Shorts.
+You are an expert YouTube Shorts editor AND audio-visual creative director. \
+Read the following video transcript. Find all highly engaging, self-contained \
+segments that would make viral Shorts.
 
 Strict Rules:
 1. Each clip must be between 30 and 60 seconds long.
@@ -281,8 +282,29 @@ Description Formatting Rules:
 - Craft a brief 1-2 sentence contextual hook summarizing the moment without revealing the exact punchline ending.
 - Append a clean, un-spammy Call To Action: Like & subscribe for more daily clips! 🎬
 
-Return the output STRICTLY as a JSON array of objects, like this:
-[{"title": "testing the 50 pros layout | he got cooked instantly 💀", "description": "this guy thought he could outsmart the pros but things went horribly wrong.\\n\\nLike & subscribe for more daily clips! 🎬", "start_time": 15.5, "end_time": 58.2}]
+hook_text Rules (MANDATORY — include for EVERY clip):
+- Write a single high-retention vocal narration line of exactly 7 to 12 words.
+- MUST use explicit phonetic spelling and typography to trigger deep vocal modulation, gravelly voice fry, and natural pacing shifts from an AI TTS engine (ElevenLabs).
+- ALWAYS open with a hyphenated stutter on the very first word, e.g. "G-G-Guysss...", "W-W-Wait...", "Lookkk...", "N-No wayyy..."
+- Strategically place ellipses ("...") to dictate natural gasps and dramatic pauses.
+- Use exclamation points to trigger sharp pitch drops at the end of phrases.
+- Examples: "W-W-Wait... you actually need to SEE this ending!", "G-G-Guysss... this is genuinely the craziest moment 💀", "N-No wayyy... bro actually pulled this off!"
+
+sfx_prompt Rules (MANDATORY — include for EVERY clip):
+- Analyze the macro emotional context and energy of the clip.
+- Write a single concise audio design command (1 sentence, max 15 words) describing the perfect cinematic sound effect to accompany the intro of this clip.
+- Target a generative sound effects AI engine. Be specific about texture, impact type, and dynamics.
+- Examples: "Cinematic deep sub-bass drop with a sudden sharp whoosh transition", "Glitchy digital electronic transition swipe with a metallic ping at the peak", "High-velocity kinetic boom hit followed by a tense low drone rumble", "Soft cinematic riser building to a sharp snare crack impact"
+
+Return the output STRICTLY as a JSON array of objects with these EXACT keys:
+[{
+  "title": "testing the 50 pros layout | he got cooked instantly 💀",
+  "description": "this guy thought he could outsmart the pros but things went horribly wrong.\\n\\nLike & subscribe for more daily clips! 🎬",
+  "start_time": 15.5,
+  "end_time": 58.2,
+  "hook_text": "W-W-Wait... he actually just did that to all of them!",
+  "sfx_prompt": "Cinematic deep sub-bass drop with a sudden sharp whoosh transition"
+}]
 
 Do not output markdown, just the raw JSON.\
 """
@@ -352,13 +374,23 @@ def analyse_transcript(transcript: str, max_clips: int = 5) -> list[dict]:
     valid_clips: list[dict] = []
     for i, clip in enumerate(clips):
         try:
-            title      = str(clip.get("title", f"Clip {i+1}")).strip()
+            title       = str(clip.get("title", f"Clip {i+1}")).strip()
             description = str(clip.get("description", "")).strip()
-            start_time = float(clip["start_time"])
-            end_time   = float(clip["end_time"])
+            hook_text   = str(clip.get("hook_text", "")).strip()
+            sfx_prompt  = str(clip.get("sfx_prompt", "")).strip()
+            start_time  = float(clip["start_time"])
+            end_time    = float(clip["end_time"])
         except (KeyError, TypeError, ValueError) as exc:
             print(f"    ⚠️   Clip {i+1} skipped (bad schema): {exc}", file=sys.stderr)
             continue
+
+        # Warn if phonetic fields are missing (non-fatal — pipeline continues)
+        if not hook_text:
+            print(f"    ⚠️   Clip {i+1} '{title}': 'hook_text' is empty — ElevenLabs will use fallback.",
+                  file=sys.stderr)
+        if not sfx_prompt:
+            print(f"    ⚠️   Clip {i+1} '{title}': 'sfx_prompt' is empty — SFX will be skipped.",
+                  file=sys.stderr)
 
         duration = end_time - start_time
         if end_time <= start_time:
@@ -373,7 +405,14 @@ def analyse_transcript(transcript: str, max_clips: int = 5) -> list[dict]:
                   f"duration {duration:.1f}s > {CLIP_MAX_SEC}s maximum.", file=sys.stderr)
             continue
 
-        valid_clips.append({"title": title, "description": description, "start_time": start_time, "end_time": end_time})
+        valid_clips.append({
+            "title":       title,
+            "description": description,
+            "hook_text":   hook_text,
+            "sfx_prompt":  sfx_prompt,
+            "start_time":  start_time,
+            "end_time":    end_time,
+        })
 
     if not valid_clips:
         raise RuntimeError(
@@ -554,10 +593,12 @@ def run(url: str, max_clips: int = 5, output_dir: str = QUEUE_DIR,
         if success:
             downloaded_chunks.append(i)
             chunk_metadata[str(i)] = {
-                "title": clip["title"],
+                "title":       clip["title"],
                 "description": clip.get("description", ""),
-                "start_time": clip["start_time"],
-                "end_time": clip["end_time"]
+                "hook_text":   clip.get("hook_text", ""),
+                "sfx_prompt":  clip.get("sfx_prompt", ""),
+                "start_time":  clip["start_time"],
+                "end_time":    clip["end_time"],
             }
         else:
             print(f"    ⚠️   Clip {i} failed — it will be absent from the queue.",
@@ -580,14 +621,18 @@ def run(url: str, max_clips: int = 5, output_dir: str = QUEUE_DIR,
 
     # ── Summary ───────────────────────────────────────────────────────────────
     print("\n" + "═" * 60)
-    print("✅  AI Director V7 — Run Complete")
+    print("✅  AI Director V7.8 — Run Complete")
     print("═" * 60)
     print(f"   Source video  : {video_title!r}")
     print(f"   Clips found   : {len(clips)}")
     print(f"   Clips saved   : {total}  (in '{output_dir}/')")
     print(f"   State file    : {STATE_FILE}")
+    print(f"   hook_text/sfx : Persisted in state.json → chunk_metadata")
     print(f"   → Run  python smart_editor.py  to process chunk 1/{total}")
     print("═" * 60)
+
+    # Return title so the calling orchestrator (main.py) can record history.
+    return video_title
 
 
 # ═════════════════════════════════════════════════════════════════════════════
