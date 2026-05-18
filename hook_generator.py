@@ -57,8 +57,7 @@ except ImportError:
 # ═════════════════════════════════════════════════════════════════════════════
 STATE_FILE = "state.json"
 
-# ElevenLabs voice configuration — Adam (pNInz6obpgmo5Cg7PJDJ)
-ELEVENLABS_VOICE_ID = "pNInz6obpgmo5Cg7PJDJ"   # Adam
+# ElevenLabs voice configuration
 ELEVENLABS_MODEL    = "eleven_v3"
 
 # Duration of the teaser visual clip (seconds)
@@ -143,9 +142,22 @@ def generate_elevenlabs_voice(hook_text: str, output_path: str) -> None:
 
     client = _get_elevenlabs_client()
 
+    # Fetch all voices currently assigned or available to the active API key
+    available_voices = client.voices.get_all()
+    
+    # Default fallback to a standard hash if the lookup entirely fails
+    chosen_voice_id = "pNInz6obpgDQGcFmaJgB" 
+    
+    # Iterate through the account's active library to match by name string
+    for voice in available_voices.voices:
+        if voice.name and voice.name.lower() == "adam":
+            chosen_voice_id = voice.voice_id
+            print(f"   🎯 Found active voice ID for Adam: {chosen_voice_id}")
+            break
+
     # client.text_to_speech.convert() returns an iterator of audio bytes chunks
     audio_iterator = client.text_to_speech.convert(
-        voice_id   = ELEVENLABS_VOICE_ID,
+        voice_id   = chosen_voice_id,
         text       = hook_text,
         model_id   = ELEVENLABS_MODEL,
     )
@@ -376,7 +388,7 @@ def apply_hook(input_video: str, output_video: str, chunk_index: int = 1) -> Non
     # Temporary file names
     temp_voice   = "temp_hook_voice.mp3"
     temp_sfx     = "temp_sfx.mp3"
-    temp_audio   = "temp_hook_audio.mp3"   # final mixed master
+    temp_audio   = "temp_hook_audio.aac"   # final mixed master
     temp_teaser  = "temp_teaser_visual.mp4"
     temp_hook    = "temp_hook_final.mp4"
 
