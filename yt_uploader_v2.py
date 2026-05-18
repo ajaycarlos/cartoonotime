@@ -16,6 +16,7 @@ import stat
 import json
 import webbrowser
 import sys
+import socket
 from datetime import datetime, timedelta, timezone
 
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -282,10 +283,17 @@ def main():
     print(f"📅 Scheduled upload slot allocated: {schedule_timestamp.replace('T', ' ')}")
 
     # 4. Authenticate (reuse existing OAuth flow)
-    youtube = get_authenticated_service()
+    try:
+        youtube = get_authenticated_service()
 
-    # 5. Upload
-    video_id = upload_video(youtube, UPLOAD_FILE, video_title, video_description, schedule_timestamp)
+        # 5. Upload
+        video_id = upload_video(youtube, UPLOAD_FILE, video_title, video_description, schedule_timestamp)
+    except (ConnectionError, socket.gaierror, socket.timeout, Exception) as e:
+        err_str = str(e).lower()
+        if isinstance(e, (ConnectionError, socket.gaierror, socket.timeout)) or "network" in err_str or "connection" in err_str or "timeout" in err_str or "resolve" in err_str:
+            print("\n🌐 Network Error: Internet connection lost. Upload paused.")
+            sys.exit(1)
+        raise
 
     # 5. Open YouTube Studio in browser for review
     studio_url = f"https://studio.youtube.com/video/{video_id}/edit"
