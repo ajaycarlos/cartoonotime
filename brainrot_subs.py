@@ -144,7 +144,7 @@ def generate_brainrot_ass(input_srt_path: str, output_ass_path: str) -> None:
 
     Brainrot style spec (from V7.2 tuning):
       Fontname  = Arial Black
-      Fontsize  = 90          
+      Fontsize  = 75          
       MarginV   = 290         (clears mobile UI overlays)
       Alignment = 2           (bottom-centre)
       Primary   = &H0000FFFF  (bright yellow)
@@ -168,7 +168,7 @@ WrapStyle: 1
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Brainrot,Arial Black,90,&H0000FFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,4,0,2,10,10,290,1
+Style: Brainrot,Arial Black,55,&H0000FFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,4,0,2,10,10,290,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -199,7 +199,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             ass_end   = to_ass_time(chunk_end)
 
             events.append(
-                f"Dialogue: 0,{ass_start},{ass_end},Brainrot,,0,0,0,,{chunk_text}"
+                f"Dialogue: 0,{ass_start},{ass_end},Brainrot,,0,0,0,,{{\\fscx130\\fscy130\\t(0,100,\\fscx100\\fscy100)}}{chunk_text}"
             )
 
     with open(output_ass_path, 'w', encoding='utf-8') as f:
