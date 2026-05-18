@@ -7,6 +7,7 @@ import os
 STATE_FILE = "state.json"
 
 def main():
+    os.environ["AUTO_RUN"] = "1"
     print("🚀 Starting Unattended Batch Runner...")
     
     if not os.path.exists(STATE_FILE):
@@ -46,6 +47,10 @@ def main():
 
     print("\n🎉 All chunks processed and scheduled successfully!")
     print("🛑 Executing system shutdown...")
+    # ⚠️  AUDIT WARNING: os.system() passes a shell string and is equivalent to
+    # shell=True. Consider replacing with: subprocess.run(["sudo", "shutdown", "now"], check=False)
+    # to avoid shell injection risk in environments where the script path or
+    # environment variables could be influenced by untrusted input.
     os.system("sudo shutdown now")
 
 if __name__ == "__main__":

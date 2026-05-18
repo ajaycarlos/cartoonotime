@@ -4,7 +4,7 @@ brainrot_subs.py — Local Brainrot Subtitle Generator
 
 Parses Whisper-generated SRT files and produces a styled .ass file with
 Hormozi/Brainrot aesthetics:
-  • Arial Black  Fontsize=90  MarginV=290
+  • Arial Rounded MT Bold  Fontsize=100  MarginV=290
   • Bright-yellow text, thick black outline
   • Max 2 words per flash chunk for rapid eye engagement
 
@@ -143,12 +143,13 @@ def generate_brainrot_ass(input_srt_path: str, output_ass_path: str) -> None:
     styled .ass file to output_ass_path.
 
     Brainrot style spec (from V7.2 tuning):
-      Fontname  = Arial Black
-      Fontsize  = 75          
+      Fontname  = Arial Rounded MT Bold
+      Fontsize  = 100         
       MarginV   = 290         (clears mobile UI overlays)
       Alignment = 2           (bottom-centre)
-      Primary   = &H0000FFFF  (bright yellow)
+      Primary   = &H00FFFFFF  (pure white)
       Outline   = 4 px black
+      Shadow    = 3
     """
     with open(input_srt_path, 'r', encoding='utf-8') as f:
         content = f.read()
@@ -168,7 +169,7 @@ WrapStyle: 1
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Brainrot,Arial Black,55,&H0000FFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,4,0,2,10,10,290,1
+Style: Brainrot,Arial Rounded MT Bold,100,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,4,3,2,10,10,290,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -178,7 +179,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     MAX_WORDS_PER_CHUNK = 2
 
     for start_sec, end_sec, text in blocks:
-        words = text.split()
+        words = text.upper().split()
         if not words:
             continue
 

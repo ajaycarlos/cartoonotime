@@ -273,8 +273,9 @@ HH:MM:SS format to total seconds, e.g. 00:01:15.50 → 75.5).
 must be able to understand and enjoy it.
 
 Title Formatting Rules:
-- Human Tone Only: Never use typical AI corporate fluff words (e.g., Ultimate, Unbelievable, Insane, Shocking, Witness, Mastery). Write like a real millennial/Gen-Z creator or a clipping community account. Use natural sentence case or entirely lowercase formatting.
-- The Pipe Split (|): If a setup and a punchline are both compelling, use the pipe symbol to elegantly separate them (e.g., testing the 50 pros layout | he got cooked instantly).
+- Titles MUST be in Title Case. Capitalize the first letter of all important words (nouns, verbs, adjectives), while keeping minor prepositions and articles lowercase.
+- Human Tone Only: Never use typical AI corporate fluff words (e.g., Ultimate, Unbelievable, Insane, Shocking, Witness, Mastery). Write like a real millennial/Gen-Z creator or a clipping community account.
+- The Pipe Split (|): If a setup and a punchline are both compelling, use the pipe symbol to elegantly separate them (e.g., Testing The 50 Pros Layout | He Got Cooked Instantly).
 - Emoji Limits: Enforce a strict maximum cap of 1 to 2 emojis total per title, utilizing realistic high-engagement choices (💀, 😭, 🔥, 🥶, 🤡, 👁️).
 - No Spam: Do not include part numbers ("Part 1") or the word "brainrot" in the title or description.
 
@@ -283,12 +284,14 @@ Description Formatting Rules:
 - Append a clean, un-spammy Call To Action: Like & subscribe for more daily clips! 🎬
 
 hook_text Rules (MANDATORY — include for EVERY clip):
+- Analyze the transcript of the ENTIRE chunk and write a standalone, complete-sentence hook that establishes the curiosity/stakes of the clip independently.
+- It must be a complete thought that ends with a period or exclamation mark before the raw video starts.
 - Write a single high-retention vocal narration line of exactly 7 to 12 words.
 - MUST use explicit phonetic spelling and typography to trigger deep vocal modulation, gravelly voice fry, and natural pacing shifts from an AI TTS engine (ElevenLabs).
-- ALWAYS open with a hyphenated stutter on the very first word, e.g. "G-G-Guysss...", "W-W-Wait...", "Lookkk...", "N-No wayyy..."
-- Strategically place ellipses ("...") to dictate natural gasps and dramatic pauses.
+- CRITICAL: Do NOT use hyphens for stutters (e.g., 'G-G-Guys'). The TTS engine mispronounces this. To simulate a stutter or vocal drag, stretch the letters natively and end with a comma (e.g., 'Ggguuys,' or 'Wwwait,').
+- CRITICAL: NEVER use ellipses ("...") in the hook_text. The ElevenLabs TTS engine misinterprets ellipses as multiple speakers. Use a comma (",") for any pause.
 - Use exclamation points to trigger sharp pitch drops at the end of phrases.
-- Examples: "W-W-Wait... you actually need to SEE this ending!", "G-G-Guysss... this is genuinely the craziest moment 💀", "N-No wayyy... bro actually pulled this off!"
+- Examples: "Ggguuys, these guys actually paid $10,000 for a flight just to judge the bathroom!", "Wwwait, this is genuinely the craziest moment!", "Nnooo wayyy, bro actually pulled this off!"
 
 sfx_prompt Rules (MANDATORY — include for EVERY clip):
 - Analyze the macro emotional context and energy of the clip.
@@ -298,7 +301,7 @@ sfx_prompt Rules (MANDATORY — include for EVERY clip):
 
 Return the output STRICTLY as a JSON array of objects with these EXACT keys:
 [{
-  "title": "testing the 50 pros layout | he got cooked instantly 💀",
+  "title": "Testing The 50 Pros Layout | He Got Cooked Instantly 💀",
   "description": "this guy thought he could outsmart the pros but things went horribly wrong.\\n\\nLike & subscribe for more daily clips! 🎬",
   "start_time": 15.5,
   "end_time": 58.2,
@@ -461,12 +464,11 @@ def download_clip(url: str, clip: dict, output_path: str) -> bool:
         "--download-sections", section,
         "-f", YTDLP_FORMAT,
         "--merge-output-format", "mp4",
-        # Force-keyframe at section boundaries for precise cuts
-        "--force-keyframes-at-cuts",
         # Prevent re-encoding the full video before slicing
         "--no-playlist",
         # Force FFmpeg to aggressively reconnect upon server-side audio drops
         "--downloader-args", "ffmpeg_i:-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
+        "--downloader-args", "ffmpeg_o:-c:v libx264 -preset ultrafast -crf 23 -c:a aac -b:a 128k",
         # Rate-limit to be polite (adjust if needed)
         "--limit-rate", "5M",
         "-o", output_path,

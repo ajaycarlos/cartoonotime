@@ -242,8 +242,12 @@ def main():
         raise FileNotFoundError(
             f"{STATE_FILE} not found. Run brainrot_fetcher.py first."
         )
-    with open(STATE_FILE) as f:
-        state = json.load(f)
+    try:
+        with open(STATE_FILE, encoding="utf-8") as f:
+            state = json.load(f)
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"\n❌  Could not read {STATE_FILE}: {exc}", file=sys.stderr)
+        sys.exit(1)
 
     original_title = state.get("original_title", "Unknown Cartoon")
     current_chunk  = state.get("current_chunk", 1)
@@ -299,6 +303,12 @@ def main():
     studio_url = f"https://studio.youtube.com/video/{video_id}/edit"
     print(f"\n🌐  Opening YouTube Studio: {studio_url}")
     webbrowser.open(studio_url)
+
+    if os.environ.get("AUTO_RUN") != "1":
+        qc_choice = input("❓ Was the upload perfect? (y/n): ").strip().lower()
+        if qc_choice not in ['y', 'yes']:
+            print("Rollback initiated. State preserved for re-run.")
+            sys.exit(0)
 
     # 6. Cleanup + advance counter
     chunk_file = os.path.join(QUEUE_DIR, f"chunk_{current_chunk}.mp4")

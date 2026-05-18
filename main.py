@@ -193,8 +193,12 @@ def state_exists() -> bool:
 
 
 def read_state() -> dict:
-    with open(STATE_FILE) as f:
-        return json.load(f)
+    try:
+        with open(STATE_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"\n❌  Could not read {STATE_FILE}: {exc}", file=sys.stderr)
+        sys.exit(1)
 
 
 def prompt_and_save_layout_choice():

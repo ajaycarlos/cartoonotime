@@ -43,6 +43,7 @@ load_dotenv()
 # ── ElevenLabs client (V7.8 — native SDK) ─────────────────────────────────────
 try:
     from elevenlabs.client import ElevenLabs
+    from elevenlabs import VoiceSettings
 except ImportError:
     print(
         "❌  elevenlabs SDK is not installed.\n"
@@ -140,32 +141,43 @@ def generate_elevenlabs_voice(hook_text: str, output_path: str) -> None:
     """
     print(f"   🎤  ElevenLabs [Adam / eleven_v3]: \"{hook_text}\"")
 
-    client = _get_elevenlabs_client()
+    try:
+        client = _get_elevenlabs_client()
 
-    # Fetch all voices currently assigned or available to the active API key
-    available_voices = client.voices.get_all()
-    
-    # Default fallback to a standard hash if the lookup entirely fails
-    chosen_voice_id = "pNInz6obpgDQGcFmaJgB" 
-    
-    # Iterate through the account's active library to match by name string
-    for voice in available_voices.voices:
-        if voice.name and voice.name.lower() == "adam":
-            chosen_voice_id = voice.voice_id
-            print(f"   🎯 Found active voice ID for Adam: {chosen_voice_id}")
-            break
+        # Fetch all voices currently assigned or available to the active API key
+        available_voices = client.voices.get_all()
 
-    # client.text_to_speech.convert() returns an iterator of audio bytes chunks
-    audio_iterator = client.text_to_speech.convert(
-        voice_id   = chosen_voice_id,
-        text       = hook_text,
-        model_id   = ELEVENLABS_MODEL,
-    )
+        # Default fallback to a standard hash if the lookup entirely fails
+        chosen_voice_id = "pNInz6obpgDQGcFmaJgB"
 
-    with open(output_path, "wb") as out_fh:
-        for chunk in audio_iterator:
-            if chunk:
-                out_fh.write(chunk)
+        # Iterate through the account's active library to match by name string
+        for voice in available_voices.voices:
+            if voice.name and voice.name.lower() == "adam":
+                chosen_voice_id = voice.voice_id
+                print(f"   🎯 Found active voice ID for Adam: {chosen_voice_id}")
+                break
+
+        # client.text_to_speech.convert() returns an iterator of audio bytes chunks
+        audio_iterator = client.text_to_speech.convert(
+            voice_id   = chosen_voice_id,
+            text       = hook_text,
+            model_id   = ELEVENLABS_MODEL,
+            voice_settings=VoiceSettings(
+                stability=0.35,
+                similarity_boost=0.85,
+                style=0.45,
+            ),
+        )
+
+        with open(output_path, "wb") as out_fh:
+            for chunk in audio_iterator:
+                if chunk:
+                    out_fh.write(chunk)
+
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(
+            f"ElevenLabs voice synthesis failed (possible API timeout or network error): {exc}"
+        ) from exc
 
     print(f"   ✅  Voice audio → {output_path}")
 
@@ -272,25 +284,24 @@ def _get_duration(path: str) -> float:
     return float(result.stdout.strip())
 
 
-def _extract_teaser_visual(input_video: str, teaser_path: str) -> None:
+def _extract_teaser_visual(input_video: str, teaser_path: str, clip_duration: float) -> None:
     """
-    Cut a HOOK_DURATION-second silent clip from near the END of input_video.
+    Cut a clip_duration-second silent clip from near the END of input_video.
 
     Start = duration - TEASER_START_OFFSET
-    End   = duration - TEASER_END_OFFSET
+    clip_duration is passed in dynamically from the actual audio length.
     (clamped so start >= 0)
     """
     duration  = _get_duration(input_video)
     start_sec = max(0.0, duration - TEASER_START_OFFSET)
-    clip_len  = HOOK_DURATION
 
-    print(f"   ✂️   Teaser visual: {start_sec:.2f}s → {start_sec + clip_len:.2f}s  (of {duration:.2f}s)")
+    print(f"   ✂️   Teaser visual: {start_sec:.2f}s → {start_sec + clip_duration:.2f}s  (of {duration:.2f}s, audio-matched)")
 
     cmd = [
         "ffmpeg", "-y",
         "-ss", str(start_sec),
         "-i",  input_video,
-        "-t",  str(clip_len),
+        "-t",  str(clip_duration),
         "-an",                      # strip original audio — SFX/voice will replace it
         "-c:v", "libx264",
         "-preset", "ultrafast",
@@ -307,7 +318,8 @@ def _merge_audio_visual(teaser_video: str, mixed_audio: str, hook_out: str) -> N
     Merge teaser_video (silent) + the pre-mixed studio master audio.
 
     Audio is normalized to 48 kHz stereo AAC for concat compatibility.
-    -shortest truncates the silent visual to the audio duration.
+    The teaser visual was already cut to match the audio duration exactly
+    (dynamic duration from ffprobe), so -shortest is not needed here.
     """
     cmd = [
         "ffmpeg", "-y",
@@ -320,7 +332,6 @@ def _merge_audio_visual(teaser_video: str, mixed_audio: str, hook_out: str) -> N
         "-b:a", "128k",
         "-ar", "48000",
         "-ac", "2",
-        "-shortest",
         "-threads", "4",
         hook_out,
     ]
@@ -417,8 +428,11 @@ def apply_hook(input_video: str, output_video: str, chunk_index: int = 1) -> Non
             print("   ℹ️   Using voice-only audio (SFX skipped).")
             _encode_voice_only(temp_voice, temp_audio)
 
-        # Step 5 — Extract silent teaser visual from end of chunk
-        _extract_teaser_visual(input_video, temp_teaser)
+        # Step 5 — Extract silent teaser visual from end of chunk,
+        #           sized to match the actual audio duration exactly.
+        audio_duration = _get_duration(temp_audio)
+        print(f"   🕐  Dynamic audio duration detected: {audio_duration:.3f}s")
+        _extract_teaser_visual(input_video, temp_teaser, clip_duration=audio_duration)
 
         # Step 6 — Merge teaser visual + studio master audio
         _merge_audio_visual(temp_teaser, temp_audio, temp_hook)

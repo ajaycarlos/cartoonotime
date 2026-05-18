@@ -82,13 +82,21 @@ def load_state() -> dict:
         raise FileNotFoundError(
             f"{STATE_FILE} not found. Run interactive_fetcher.py first."
         )
-    with open(STATE_FILE) as f:
-        return json.load(f)
+    try:
+        with open(STATE_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(
+            f"{STATE_FILE} is corrupt and cannot be parsed: {exc}"
+        ) from exc
 
 
 def save_state(state: dict) -> None:
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f, indent=4)
+    try:
+        with open(STATE_FILE, "w", encoding="utf-8") as f:
+            json.dump(state, f, indent=4)
+    except OSError as exc:
+        print(f"   ⚠️   Could not write {STATE_FILE}: {exc}", file=sys.stderr)
 
 
 # ─────────────────────────────────────────────

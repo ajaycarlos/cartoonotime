@@ -1,51 +1,6 @@
 {
     "satisfying_index": 1,
-    "ai_director_run": "2026-05-18T08:45:13+0530",
-    "last_scheduled_time": "2026-05-21T16:30:00+05:30",
-    "original_title": "$1 vs $500,000 Plane Ticket!",
-    "total_chunks": 5,
-    "current_chunk": 5,
-    "chunk_metadata": {
-        "1": {
-            "title": "flying on the world's cheapest plane | it sounds like a lawnmower \ud83d\udc80",
-            "description": "They're about to fly on the cheapest plane in the world, but the engine sounds a little... off.\n\nLike & subscribe for more daily clips! \ud83c\udfac",
-            "hook_text": "W-W-Wait... this plane sounds like a lawnmower engine!",
-            "sfx_prompt": "Grinding mechanical engine start with a comedic cartoon spring boing.",
-            "start_time": 30.71,
-            "end_time": 82.32
-        },
-        "2": {
-            "title": "flying first class for $10,000 | the best part is no nolan \ud83d\ude2d",
-            "description": "They're flying first class and enjoying all the perks, but one feature stands out above the rest.\n\nLike & subscribe for more daily clips! \ud83c\udfac",
-            "hook_text": "L-L-Look... this $10,000 first class seat is actually insane!",
-            "sfx_prompt": "Luxurious orchestral swell with a gentle whoosh and chime.",
-            "start_time": 84.75,
-            "end_time": 122.31
-        },
-        "3": {
-            "title": "$25,000 private jet | but the bathroom is a disappointment \ud83d\udc80",
-            "description": "They're on a private jet with multiple rooms and personal service, but one detail leaves them unimpressed.\n\nLike & subscribe for more daily clips! \ud83c\udfac",
-            "hook_text": "N-N-No wayyy... this $25,000 private jet has a tiny bathroom!",
-            "sfx_prompt": "Deep, resonant jet engine hum with a subtle luxury chime.",
-            "start_time": 190.44,
-            "end_time": 239.48
-        },
-        "4": {
-            "title": "flying on a $100,000 private jet | he got stuck in the bathroom \ud83d\ude2d",
-            "description": "They're flying on a luxurious private jet, but one of the friends gets into a hilarious predicament during takeoff.\n\nLike & subscribe for more daily clips! \ud83c\udfac",
-            "hook_text": "G-G-Guysss... this private jet has a TV in the TOILET!",
-            "sfx_prompt": "Smooth, ascending jet engine hum with a playful, mischievous synth flourish.",
-            "start_time": 316.76,
-            "end_time": 357.36
-        },
-        "5": {
-            "title": "they put \"carl's mom\" on a $300,000 blimp \ud83d\udc80",
-            "description": "They're about to reveal what's written on their massive blimp, and it's not what anyone expected.\n\nLike & subscribe for more daily clips! \ud83c\udfac",
-            "hook_text": "W-W-Wait... they actually put THAT on the side of the blimp?!",
-            "sfx_prompt": "Grand, ascending orchestral fanfare with a comedic cymbal crash.",
-            "start_time": 429.15,
-            "end_time": 483.39
-        }
-    },
+    "ai_director_run": "2026-05-18T14:19:17+0530",
+    "last_scheduled_time": "2026-05-22T10:30:00+05:30",
     "use_satisfying_base": false
 }
