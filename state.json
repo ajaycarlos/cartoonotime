@@ -1,51 +1,6 @@
 {
     "satisfying_index": 1,
     "ai_director_run": "2026-05-19T14:33:52+0530",
-    "last_scheduled_time": "2026-05-22T20:30:00+05:30",
-    "original_title": "$1 vs $100,000,000 Car!",
-    "total_chunks": 5,
-    "current_chunk": 5,
-    "chunk_metadata": {
-        "1": {
-            "title": "Driving a $1 Rust Bucket Car | It Actually Runs! \ud83d\udc80",
-            "description": "They bought a car for literally one dollar, expecting it to be completely worthless. You won't believe what happened when they tried to start it up.\n\nLike & subscribe for more daily clips! \ud83c\udfac",
-            "hook_text": "Wwwait, this $1 car actually just started!",
-            "sfx_prompt": "",
-            "start_time": 21.96,
-            "end_time": 52.99
-        },
-        "2": {
-            "title": "This $100,000 Car Drives Itself | Terrifying Acceleration \ud83e\udd76",
-            "description": "Watch as they test out a $100,000 car that can drive itself, with no one even touching the wheel. The acceleration is wild!\n\nLike & subscribe for more daily clips! \ud83c\udfac",
-            "hook_text": "Nnooo wayyy, this car is driving itself with no one inside!",
-            "sfx_prompt": "",
-            "start_time": 66.36,
-            "end_time": 105.55
-        },
-        "3": {
-            "title": "Testing a $300,000 Explosion Proof Car | Did It Survive? \ud83d\udd25",
-            "description": "They put a $300,000 'explosion proof' car to the ultimate test. Will the car, and the Feasta, survive the massive blast?\n\nLike & subscribe for more daily clips! \ud83c\udfac",
-            "hook_text": "Ggguys, they're about to blow up this $300,000 car!",
-            "sfx_prompt": "",
-            "start_time": 219.44,
-            "end_time": 255.91
-        },
-        "4": {
-            "title": "Driving a $500,000 Car Into The Ocean | It Becomes a Boat! \ud83d\udee5\ufe0f",
-            "description": "Watch them take a $500,000 car and drive it straight into the water! You won't believe what happens next.\n\nLike & subscribe for more daily clips! \ud83c\udfac",
-            "hook_text": "Wwwait, this car is literally driving into the ocean!",
-            "sfx_prompt": "",
-            "start_time": 267.44,
-            "end_time": 299.71
-        },
-        "5": {
-            "title": "The $30 Million Museum Car Stalled! | Police Escort Gone Wrong \ud83d\ude2d",
-            "description": "Driving a $30 million historic Ferrari with a full police escort, but things take an unexpected turn when the car suddenly stalls.\n\nLike & subscribe for more daily clips! \ud83c\udfac",
-            "hook_text": "Nnooo wayyy, the $30 million car just stalled!",
-            "sfx_prompt": "",
-            "start_time": 867.88,
-            "end_time": 902.27
-        }
-    },
+    "last_scheduled_time": "2026-05-23T20:30:00+05:30",
     "use_satisfying_base": false
 }
