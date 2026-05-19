@@ -212,6 +212,13 @@ def cleanup_and_advance(state: dict, chunk_file: str):
                 except OSError:
                     pass
                     
+            # Delete cached hook audio files in queue/
+            for f in glob.glob(os.path.join(QUEUE_DIR, "*_hook.aac")):
+                try:
+                    os.remove(f)
+                except OSError:
+                    pass
+                    
             # Delete lingering temp_* files and ready_to_upload.mp4 in root
             for f in glob.glob("temp_*"):
                 try:

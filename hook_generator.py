@@ -313,12 +313,16 @@ def apply_hook(input_video: str, output_video: str, chunk_index: int = 1) -> Non
     """
     # Temporary file names
     temp_voice  = "temp_hook_voice.mp3"
-    temp_audio  = "temp_hook_audio.aac"   # normalized voice master (no SFX)
+    
+    # Cache path based on input chunk (e.g. queue/chunk_1.mp4 -> queue/chunk_1_hook.aac)
+    base_name = os.path.splitext(input_video)[0]
+    cached_audio = f"{base_name}_hook.aac"
+    
     temp_teaser = "temp_teaser_visual.mp4"
     temp_hook   = "temp_hook_final.mp4"
 
-    # All temps that must be cleaned up
-    all_temps = (temp_voice, temp_audio, temp_teaser, temp_hook)
+    # All temps that must be cleaned up (cached_audio EXCLUDED)
+    all_temps = (temp_voice, temp_teaser, temp_hook)
 
     print(f"\n🪝  Hook Generator [V7.8] — prepending voice hook to: {input_video}")
 
@@ -327,21 +331,25 @@ def apply_hook(input_video: str, output_video: str, chunk_index: int = 1) -> Non
     print(f"    Hook text : \"{hook_text}\"")
 
     try:
-        # Step 2 — ElevenLabs voice synthesis (Adam, eleven_turbo_v2_5)
-        generate_elevenlabs_voice(hook_text, temp_voice)
+        # Step 2 & 3 — Cache check (Skip API if found)
+        if os.path.exists(cached_audio):
+            print("💾 Cached hook audio found. Skipping API call to save credits.")
+        else:
+            # Step 2 — ElevenLabs voice synthesis (Adam, eleven_turbo_v2_5)
+            generate_elevenlabs_voice(hook_text, temp_voice)
 
-        # Step 3 — Re-encode voice to normalized AAC (no SFX mixing)
-        print("   ℹ️   Encoding voice-only audio (SFX removed in V7.8).")
-        _encode_voice_only(temp_voice, temp_audio)
+            # Step 3 — Re-encode voice to normalized AAC (no SFX mixing)
+            print("   ℹ️   Encoding voice-only audio (SFX removed in V7.8).")
+            _encode_voice_only(temp_voice, cached_audio)
 
         # Step 4 — Extract silent teaser visual from end of chunk,
         #           sized to match the actual audio duration exactly.
-        audio_duration = _get_duration(temp_audio)
+        audio_duration = _get_duration(cached_audio)
         print(f"   🕐  Dynamic audio duration detected: {audio_duration:.3f}s")
         _extract_teaser_visual(input_video, temp_teaser, clip_duration=audio_duration)
 
         # Step 5 — Merge teaser visual + voice audio
-        _merge_audio_visual(temp_teaser, temp_audio, temp_hook)
+        _merge_audio_visual(temp_teaser, cached_audio, temp_hook)
 
         # Step 6 — Concatenate hook + FULL UNCUT raw chunk (no -ss on main input)
         _concat_hook_and_video(temp_hook, input_video, output_video)
