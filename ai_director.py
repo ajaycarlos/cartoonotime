@@ -284,20 +284,16 @@ Description Formatting Rules:
 - Append a clean, un-spammy Call To Action: Like & subscribe for more daily clips! 🎬
 
 hook_text Rules (MANDATORY — include for EVERY clip):
+- HOOK SELECTION: You must analyze the entire chunk and select the single most exciting, high-stakes, or hilarious moment to base the hook on.
+- HOOK TONE: The hook_text MUST be loud, catchy, and exciting. Write it like a viral TikTok narrator hyping up the video.
 - Analyze the transcript of the ENTIRE chunk and write a standalone, complete-sentence hook that establishes the curiosity/stakes of the clip independently.
 - It must be a complete thought that ends with a period or exclamation mark before the raw video starts.
 - Write a single high-retention vocal narration line of exactly 7 to 12 words.
 - MUST use explicit phonetic spelling and typography to trigger deep vocal modulation, gravelly voice fry, and natural pacing shifts from an AI TTS engine (ElevenLabs).
-- CRITICAL: Do NOT use hyphens for stutters (e.g., 'G-G-Guys'). The TTS engine mispronounces this. To simulate a stutter or vocal drag, stretch the letters natively and end with a comma (e.g., 'Ggguuys,' or 'Wwwait,').
+- PHONETIC STUTTER RULE: CRITICAL - NEVER use hyphens for stutters (e.g., do NOT write 'G-G-Guys'). To simulate vocal drag, stretch the letters natively (e.g., 'Ggguyss,' or 'Wwwait,'). The ElevenLabs v1 model will glitch if you use hyphens.
 - CRITICAL: NEVER use ellipses ("...") in the hook_text. The ElevenLabs TTS engine misinterprets ellipses as multiple speakers. Use a comma (",") for any pause.
 - Use exclamation points to trigger sharp pitch drops at the end of phrases.
 - Examples: "Ggguuys, these guys actually paid $10,000 for a flight just to judge the bathroom!", "Wwwait, this is genuinely the craziest moment!", "Nnooo wayyy, bro actually pulled this off!"
-
-sfx_prompt Rules (MANDATORY — include for EVERY clip):
-- Analyze the macro emotional context and energy of the clip.
-- Write a single concise audio design command (1 sentence, max 15 words) describing the perfect cinematic sound effect to accompany the intro of this clip.
-- Target a generative sound effects AI engine. Be specific about texture, impact type, and dynamics.
-- Examples: "Cinematic deep sub-bass drop with a sudden sharp whoosh transition", "Glitchy digital electronic transition swipe with a metallic ping at the peak", "High-velocity kinetic boom hit followed by a tense low drone rumble", "Soft cinematic riser building to a sharp snare crack impact"
 
 Return the output STRICTLY as a JSON array of objects with these EXACT keys:
 [{
@@ -305,8 +301,7 @@ Return the output STRICTLY as a JSON array of objects with these EXACT keys:
   "description": "this guy thought he could outsmart the pros but things went horribly wrong.\\n\\nLike & subscribe for more daily clips! 🎬",
   "start_time": 15.5,
   "end_time": 58.2,
-  "hook_text": "W-W-Wait... he actually just did that to all of them!",
-  "sfx_prompt": "Cinematic deep sub-bass drop with a sudden sharp whoosh transition"
+  "hook_text": "Wwwait, he actually just did that to all of them!"
 }]
 
 Do not output markdown, just the raw JSON.\
@@ -387,13 +382,11 @@ def analyse_transcript(transcript: str, max_clips: int = 5) -> list[dict]:
             print(f"    ⚠️   Clip {i+1} skipped (bad schema): {exc}", file=sys.stderr)
             continue
 
-        # Warn if phonetic fields are missing (non-fatal — pipeline continues)
+        # Warn if hook_text is missing (non-fatal — pipeline will use fallback)
         if not hook_text:
             print(f"    ⚠️   Clip {i+1} '{title}': 'hook_text' is empty — ElevenLabs will use fallback.",
                   file=sys.stderr)
-        if not sfx_prompt:
-            print(f"    ⚠️   Clip {i+1} '{title}': 'sfx_prompt' is empty — SFX will be skipped.",
-                  file=sys.stderr)
+        # sfx_prompt is no longer generated (V7.8 SFX removal) — no warning needed
 
         duration = end_time - start_time
         if end_time <= start_time:

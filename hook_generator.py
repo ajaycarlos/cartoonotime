@@ -1,25 +1,24 @@
 #!/usr/bin/env python3
 """
-hook_generator.py — ElevenLabs Native Voice & Cinematic SFX Hook Compositor  [V7.8]
+hook_generator.py — ElevenLabs Voice-Only Hook Compositor  [V7.8]
 
-Generates a 2.5-second "hook" clip that is prepended to the start of
-every processed chunk.  The hook consists of:
+Generates a hook clip that is prepended to the start of every processed chunk.
+The hook consists of:
 
-  • A phonetically-modulated ElevenLabs voice-over (Adam, eleven_v3) with the
-    custom hook_text extracted from state.json → chunk_metadata.
-  • A generative cinematic sound effect (ElevenLabs SFX API) from the custom
-    sfx_prompt in state.json, mixed at the ABSOLUTE BEGINNING of the audio track
-    at full impact volume, then fading under Adam's opening vocal stutter.
+  • A phonetically-modulated ElevenLabs voice-over (Adam, eleven_turbo_v2_5)
+    with the custom hook_text extracted from state.json → chunk_metadata.
   • A silent teaser clip extracted from near the END of the video — so
     the viewer gets a flash of the climax before seeing it in context.
+
+SFX and amix removed (V7.8 cost-optimisation): temp_hook_audio.aac is now
+the raw re-encoded TTS voice track with no mixing stage.
 
 Pipeline
 --------
     apply_hook(input_video, output_video, chunk_index)
-        └── load_state() → extract hook_text + sfx_prompt for chunk_index
+        └── load_state() → extract hook_text for chunk_index
         └── generate_elevenlabs_voice(hook_text)  → temp_hook_voice.mp3
-        └── generate_sfx(sfx_prompt)              → temp_sfx.mp3
-        └── mix_voice_and_sfx()                   → temp_hook_audio.mp3
+        └── _encode_voice_only()                  → temp_hook_audio.aac
         └── ffmpeg extract teaser                 → temp_teaser_visual.mp4
         └── ffmpeg merge A+V                      → temp_hook_final.mp4
         └── ffmpeg concat demuxer                 → output_video
@@ -58,8 +57,8 @@ except ImportError:
 # ═════════════════════════════════════════════════════════════════════════════
 STATE_FILE = "state.json"
 
-# ElevenLabs voice configuration
-ELEVENLABS_MODEL    = "eleven_v3"
+# ElevenLabs voice configuration — newer turbo v2.5 model
+ELEVENLABS_MODEL    = "eleven_turbo_v2_5"
 
 # Duration of the teaser visual clip (seconds)
 HOOK_DURATION = 2.5
@@ -67,10 +66,6 @@ HOOK_DURATION = 2.5
 # How far from the END of the video to start the teaser clip (seconds)
 TEASER_START_OFFSET = 5.0   # start of teaser = duration - this
 TEASER_END_OFFSET   = 2.5   # end of teaser   = duration - this (unused directly)
-
-# SFX mix parameters — SFX is front-loaded at full impact, voice is primary
-SFX_VOLUME   = 0.35    # SFX relative volume so it never clips / drowns the vocal
-VOICE_VOLUME = 1.0     # Voice stays at full unity gain
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -88,29 +83,24 @@ def load_state() -> dict:
         return {}
 
 
-def get_chunk_hook_data(chunk_index: int) -> tuple[str, str]:
+def get_chunk_hook_data(chunk_index: int) -> str:
     """
-    Extract (hook_text, sfx_prompt) for the given chunk_index from state.json.
+    Extract hook_text for the given chunk_index from state.json.
 
-    Falls back to safe defaults if the fields are absent.
+    Falls back to a safe default if the field is absent.
     """
     state = load_state()
     chunk_meta = state.get("chunk_metadata", {}).get(str(chunk_index), {})
 
-    hook_text  = chunk_meta.get("hook_text", "").strip()
-    sfx_prompt = chunk_meta.get("sfx_prompt", "").strip()
+    hook_text = chunk_meta.get("hook_text", "").strip()
 
-    # Safe fallbacks (non-fatal)
+    # Safe fallback (non-fatal)
     if not hook_text:
-        hook_text = "W-W-Wait... you actually need to SEE this ending!"
+        hook_text = "Wwwait, you actually need to SEE this ending!"
         print(f"   ⚠️   No hook_text in state.json for chunk {chunk_index} — using fallback.",
               file=sys.stderr)
-    if not sfx_prompt:
-        sfx_prompt = "Cinematic deep sub-bass drop with a sudden sharp whoosh transition"
-        print(f"   ⚠️   No sfx_prompt in state.json for chunk {chunk_index} — using fallback.",
-              file=sys.stderr)
 
-    return hook_text, sfx_prompt
+    return hook_text
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -133,13 +123,14 @@ def _get_elevenlabs_client() -> "ElevenLabs":
 
 def generate_elevenlabs_voice(hook_text: str, output_path: str) -> None:
     """
-    Synthesize phonetically-modulated voice using ElevenLabs Adam (eleven_v3).
+    Synthesize phonetically-modulated voice using ElevenLabs Adam
+    (eleven_turbo_v2_5 — cost-optimised V7.8 model).
 
     Args:
         hook_text:    The phonetic vocal narration line from state.json.
         output_path:  Where to write the .mp3 file (e.g. temp_hook_voice.mp3).
     """
-    print(f"   🎤  ElevenLabs [Adam / eleven_v3]: \"{hook_text}\"")
+    print(f"   🎤  ElevenLabs [Adam / eleven_turbo_v2_5]: \"{hook_text}\"")
 
     try:
         client = _get_elevenlabs_client()
@@ -183,85 +174,10 @@ def generate_elevenlabs_voice(hook_text: str, output_path: str) -> None:
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# ElevenLabs SFX Synthesis
+# NOTE: generate_sfx() and mix_voice_and_sfx() removed in V7.8
+# cost-optimisation pass.  The raw TTS voice is re-encoded directly to
+# temp_hook_audio.aac via _encode_voice_only() — no SFX, no amix.
 # ═════════════════════════════════════════════════════════════════════════════
-def generate_sfx(sfx_prompt: str, output_path: str) -> bool:
-    """
-    Synthesize a generative cinematic sound effect via ElevenLabs SFX API.
-
-    Args:
-        sfx_prompt:  Audio design command from state.json.
-        output_path: Where to write the .mp3 file (e.g. temp_sfx.mp3).
-
-    Returns:
-        True on success, False if the SFX API call fails (non-fatal).
-    """
-    print(f"   🔊  ElevenLabs SFX: \"{sfx_prompt}\"")
-
-    try:
-        client = _get_elevenlabs_client()
-
-        sfx_iterator = client.text_to_sound_effects.convert(text=sfx_prompt)
-
-        with open(output_path, "wb") as out_fh:
-            for chunk in sfx_iterator:
-                if chunk:
-                    out_fh.write(chunk)
-
-        print(f"   ✅  SFX audio → {output_path}")
-        return True
-
-    except Exception as exc:  # noqa: BLE001
-        print(f"   ⚠️   SFX generation failed: {exc} — hook will use voice-only.",
-              file=sys.stderr)
-        return False
-
-
-# ═════════════════════════════════════════════════════════════════════════════
-# FFmpeg Audio Compositor — Voice + SFX Intro Mix
-# ═════════════════════════════════════════════════════════════════════════════
-def mix_voice_and_sfx(voice_path: str, sfx_path: str, mixed_output: str) -> None:
-    """
-    Mix the ElevenLabs vocal track with the cinematic SFX intro using FFmpeg.
-
-    CRITICAL TIMING DESIGN:
-      • The SFX is placed at 0.0 seconds — the absolute beginning of the audio
-        track — so it fires the moment Adam's opening stutter begins, delivering
-        a sharp attention-snapping cinematic impact.
-      • SFX volume is scaled to SFX_VOLUME (0.35) so it creates a powerful hit
-        but never drowns or clips the vocal narration.
-      • Voice plays at unity gain (1.0).
-      • amix=inputs=2:duration=longest keeps the full voice length even if SFX
-        ends before the voice track does.
-
-    Args:
-        voice_path:   Path to the ElevenLabs voice .mp3.
-        sfx_path:     Path to the generated SFX .mp3.
-        mixed_output: Path for the final mixed .mp3.
-    """
-    # FFmpeg filter graph:
-    #   [0:a] = voice at unity gain
-    #   [1:a] = sfx scaled down to SFX_VOLUME, starting at t=0.0
-    #   amix combines both streams; duration=longest keeps full voice
-    filter_complex = (
-        f"[0:a]volume={VOICE_VOLUME}[voice];"
-        f"[1:a]volume={SFX_VOLUME}[sfx];"
-        "[voice][sfx]amix=inputs=2:duration=longest:dropout_transition=0[aout]"
-    )
-    cmd = [
-        "ffmpeg", "-y",
-        "-i", voice_path,
-        "-i", sfx_path,
-        "-filter_complex", filter_complex,
-        "-map", "[aout]",
-        "-c:a", "aac",
-        "-b:a", "128k",
-        "-ar", "48000",
-        "-ac", "2",
-        mixed_output,
-    ]
-    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    print(f"   ✅  Voice + SFX mixed → {mixed_output}")
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -377,19 +293,18 @@ def _concat_hook_and_video(hook_clip: str, main_video: str, output_video: str) -
 # ═════════════════════════════════════════════════════════════════════════════
 def apply_hook(input_video: str, output_video: str, chunk_index: int = 1) -> None:
     """
-    Prepend a cinematic ElevenLabs-voiced + SFX-mixed 2.5-second hook to
-    input_video and write the result to output_video.
+    Prepend an ElevenLabs-voiced hook to input_video and write the result to
+    output_video.  SFX and audio mixing removed in V7.8 cost-optimisation pass.
 
     Steps
     -----
-    1. Extract hook_text + sfx_prompt for chunk_index from state.json.
+    1. Extract hook_text for chunk_index from state.json.
     2. Synthesize ElevenLabs Adam voice (temp_hook_voice.mp3).
-    3. Synthesize generative SFX (temp_sfx.mp3).
-    4. Mix voice + SFX with front-loaded SFX impact (temp_hook_audio.mp3).
-    5. Extract silent teaser visual from end of source (temp_teaser_visual.mp4).
-    6. Merge teaser visual + mixed audio (temp_hook_final.mp4).
-    7. Concatenate hook + original video → output_video.
-    8. Delete all single unmixed and temporary intermediate tracks.
+    3. Re-encode voice to normalized AAC baseline (temp_hook_audio.aac).
+    4. Extract silent teaser visual from end of source (temp_teaser_visual.mp4).
+    5. Merge teaser visual + voice audio (temp_hook_final.mp4).
+    6. Concatenate hook + FULL UNCUT raw chunk → output_video.
+    7. Delete all temporary intermediate files.
 
     Args:
         input_video:  Path to the raw source chunk (e.g. queue/chunk_1.mp4).
@@ -397,53 +312,44 @@ def apply_hook(input_video: str, output_video: str, chunk_index: int = 1) -> Non
         chunk_index:  The 1-based chunk number — used to look up state.json.
     """
     # Temporary file names
-    temp_voice   = "temp_hook_voice.mp3"
-    temp_sfx     = "temp_sfx.mp3"
-    temp_audio   = "temp_hook_audio.aac"   # final mixed master
-    temp_teaser  = "temp_teaser_visual.mp4"
-    temp_hook    = "temp_hook_final.mp4"
+    temp_voice  = "temp_hook_voice.mp3"
+    temp_audio  = "temp_hook_audio.aac"   # normalized voice master (no SFX)
+    temp_teaser = "temp_teaser_visual.mp4"
+    temp_hook   = "temp_hook_final.mp4"
 
-    # All temps that must be cleaned up (including unmixed singles)
-    all_temps = (temp_voice, temp_sfx, temp_audio, temp_teaser, temp_hook)
+    # All temps that must be cleaned up
+    all_temps = (temp_voice, temp_audio, temp_teaser, temp_hook)
 
-    print(f"\n🪝  Hook Generator [V7.8] — prepending cinematic hook to: {input_video}")
+    print(f"\n🪝  Hook Generator [V7.8] — prepending voice hook to: {input_video}")
 
-    # Step 1 — Resolve phonetic hook data from state.json
-    hook_text, sfx_prompt = get_chunk_hook_data(chunk_index)
+    # Step 1 — Resolve phonetic hook text from state.json
+    hook_text = get_chunk_hook_data(chunk_index)
     print(f"    Hook text : \"{hook_text}\"")
-    print(f"    SFX prompt: \"{sfx_prompt}\"")
 
     try:
-        # Step 2 — ElevenLabs voice synthesis (Adam, eleven_v3)
+        # Step 2 — ElevenLabs voice synthesis (Adam, eleven_turbo_v2_5)
         generate_elevenlabs_voice(hook_text, temp_voice)
 
-        # Step 3 — Generative SFX synthesis
-        sfx_available = generate_sfx(sfx_prompt, temp_sfx)
+        # Step 3 — Re-encode voice to normalized AAC (no SFX mixing)
+        print("   ℹ️   Encoding voice-only audio (SFX removed in V7.8).")
+        _encode_voice_only(temp_voice, temp_audio)
 
-        # Step 4 — FFmpeg audio mix: SFX at t=0.0 under vocal stutter
-        if sfx_available and os.path.exists(temp_sfx):
-            mix_voice_and_sfx(temp_voice, temp_sfx, temp_audio)
-        else:
-            # SFX generation failed — use voice-only, still properly encoded
-            print("   ℹ️   Using voice-only audio (SFX skipped).")
-            _encode_voice_only(temp_voice, temp_audio)
-
-        # Step 5 — Extract silent teaser visual from end of chunk,
+        # Step 4 — Extract silent teaser visual from end of chunk,
         #           sized to match the actual audio duration exactly.
         audio_duration = _get_duration(temp_audio)
         print(f"   🕐  Dynamic audio duration detected: {audio_duration:.3f}s")
         _extract_teaser_visual(input_video, temp_teaser, clip_duration=audio_duration)
 
-        # Step 6 — Merge teaser visual + studio master audio
+        # Step 5 — Merge teaser visual + voice audio
         _merge_audio_visual(temp_teaser, temp_audio, temp_hook)
 
-        # Step 7 — Concatenate hook + original main video
+        # Step 6 — Concatenate hook + FULL UNCUT raw chunk (no -ss on main input)
         _concat_hook_and_video(temp_hook, input_video, output_video)
 
         print(f"\n✅  Hook applied → {output_video}")
 
     finally:
-        # Step 8 — Clean up ALL temporary tracks (unmixed singles + intermediates)
+        # Step 7 — Clean up all temporary tracks
         for tmp in all_temps:
             if os.path.exists(tmp):
                 os.remove(tmp)
