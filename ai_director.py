@@ -295,13 +295,20 @@ hook_text Rules (MANDATORY — include for EVERY clip):
 - Use exclamation points to trigger sharp pitch drops at the end of phrases.
 - Examples: "Ggguuys, these guys actually paid $10,000 for a flight just to judge the bathroom!", "Wwwait, this is genuinely the craziest moment!", "Nnooo wayyy, bro actually pulled this off!"
 
+Tag Generation Rules:
+VIRAL TAG GENERATION: You must deeply analyze the exact transcript of the specific clip you have selected. Based ONLY on the action and words in that transcript, generate exactly TWO distinct arrays to maximize YouTube Shorts algorithm reach.
+- 'tags': Generate 9 to 12 backend tags (Post-Specific, Niche-Specific, Broad). They MUST NOT contain the '#' symbol.
+- 'hashtags': Generate exactly 3 highly relevant front-end hashtags. These MUST contain the '#' symbol and have no spaces (e.g., '#MrBeast', '#Shorts', '#Challenge').
+
 Return the output STRICTLY as a JSON array of objects with these EXACT keys:
 [{
   "title": "Testing The 50 Pros Layout | He Got Cooked Instantly 💀",
   "description": "this guy thought he could outsmart the pros but things went horribly wrong.\\n\\nLike & subscribe for more daily clips! 🎬",
   "start_time": 15.5,
   "end_time": 58.2,
-  "hook_text": "Wwwait, he actually just did that to all of them!"
+  "hook_text": "Wwwait, he actually just did that to all of them!",
+  "tags": ["100k car crash", "ocean jump", "million dollar challenge", "mrbeast shorts", "animation", "funny cartoon", "viral", "shorts", "fyp"],
+  "hashtags": ["#100kCar", "#OceanCrash", "#Shorts"]
 }]
 
 Do not output markdown, just the raw JSON.\
@@ -375,7 +382,12 @@ def analyse_transcript(transcript: str, max_clips: int = 5) -> list[dict]:
             title       = str(clip.get("title", f"Clip {i+1}")).strip()
             description = str(clip.get("description", "")).strip()
             hook_text   = str(clip.get("hook_text", "")).strip()
-            sfx_prompt  = str(clip.get("sfx_prompt", "")).strip()
+            tags        = clip.get("tags", [])
+            if not isinstance(tags, list):
+                tags = []
+            hashtags    = clip.get("hashtags", [])
+            if not isinstance(hashtags, list):
+                hashtags = []
             start_time  = float(clip["start_time"])
             end_time    = float(clip["end_time"])
         except (KeyError, TypeError, ValueError) as exc:
@@ -386,7 +398,6 @@ def analyse_transcript(transcript: str, max_clips: int = 5) -> list[dict]:
         if not hook_text:
             print(f"    ⚠️   Clip {i+1} '{title}': 'hook_text' is empty — ElevenLabs will use fallback.",
                   file=sys.stderr)
-        # sfx_prompt is no longer generated (V7.8 SFX removal) — no warning needed
 
         duration = end_time - start_time
         if end_time <= start_time:
@@ -405,7 +416,8 @@ def analyse_transcript(transcript: str, max_clips: int = 5) -> list[dict]:
             "title":       title,
             "description": description,
             "hook_text":   hook_text,
-            "sfx_prompt":  sfx_prompt,
+            "tags":        tags,
+            "hashtags":    hashtags,
             "start_time":  start_time,
             "end_time":    end_time,
         })
@@ -591,7 +603,8 @@ def run(url: str, max_clips: int = 5, output_dir: str = QUEUE_DIR,
                 "title":       clip["title"],
                 "description": clip.get("description", ""),
                 "hook_text":   clip.get("hook_text", ""),
-                "sfx_prompt":  clip.get("sfx_prompt", ""),
+                "tags":        clip.get("tags", []),
+                "hashtags":    clip.get("hashtags", []),
                 "start_time":  clip["start_time"],
                 "end_time":    clip["end_time"],
             }
@@ -622,7 +635,7 @@ def run(url: str, max_clips: int = 5, output_dir: str = QUEUE_DIR,
     print(f"   Clips found   : {len(clips)}")
     print(f"   Clips saved   : {total}  (in '{output_dir}/')")
     print(f"   State file    : {STATE_FILE}")
-    print(f"   hook_text/sfx : Persisted in state.json → chunk_metadata")
+    print(f"   hook_text     : Persisted in state.json → chunk_metadata")
     print(f"   → Run  python smart_editor.py  to process chunk 1/{total}")
     print("═" * 60)
 

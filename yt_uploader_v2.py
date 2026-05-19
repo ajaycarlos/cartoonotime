@@ -17,6 +17,7 @@ import json
 import webbrowser
 import sys
 import socket
+import re
 from datetime import datetime, timedelta, timezone
 
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -82,37 +83,40 @@ def get_authenticated_service():
 
 def calculate_next_upload_slot(state: dict) -> str:
     """
-    Calculates the next logical publish window based on the current local time 
-    and existing queue state. 
-    Returns an ISO 8601 string.
+    Locks to exactly ONE upload per day at 8:30 PM IST (20:30 IST).
+
+    Logic:
+      • If last_scheduled_time exists AND is in the future → schedule exactly
+        24 hours after that existing time (preserves the 20:30 anchor).
+      • Otherwise (past or missing) → find the next upcoming 8:30 PM IST
+        relative to now.
+
+    Returns an ISO 8601 string and writes it back into state.
     """
     ist_tz = timezone(timedelta(hours=5, minutes=30))
     now = datetime.now(ist_tz)
-    
+
     last_scheduled_str = state.get("last_scheduled_time")
-    
-    future_queue_exists = False
+
     if last_scheduled_str:
         try:
             last_scheduled = datetime.fromisoformat(last_scheduled_str)
             if last_scheduled > now:
-                future_queue_exists = True
+                # Preserve the 20:30 anchor: add exactly 24 hours
+                target = last_scheduled + timedelta(days=1)
+                target = target.replace(hour=20, minute=30, second=0, microsecond=0)
+                target_iso = target.isoformat()
+                state["last_scheduled_time"] = target_iso
+                return target_iso
         except ValueError:
-            pass
+            pass  # fall through to fresh calculation
 
-    if future_queue_exists:
-        if last_scheduled.hour == 10 and last_scheduled.minute == 30:
-            target = last_scheduled.replace(hour=16, minute=30, second=0, microsecond=0)
-        else:
-            target = (last_scheduled + timedelta(days=1)).replace(hour=10, minute=30, second=0, microsecond=0)
-    else:
-        if now.hour < 10 or (now.hour == 10 and now.minute < 30):
-            target = now.replace(hour=10, minute=30, second=0, microsecond=0)
-        elif now.hour < 16 or (now.hour == 16 and now.minute < 40):
-            target = now.replace(hour=16, minute=30, second=0, microsecond=0)
-        else:
-            target = (now + timedelta(days=1)).replace(hour=10, minute=30, second=0, microsecond=0)
-            
+    # No valid future slot — find the next upcoming 8:30 PM IST
+    target = now.replace(hour=20, minute=30, second=0, microsecond=0)
+    if target <= now:
+        # 8:30 PM today has already passed; use 8:30 PM tomorrow
+        target = target + timedelta(days=1)
+
     target_iso = target.isoformat()
     state["last_scheduled_time"] = target_iso
     return target_iso
@@ -121,7 +125,14 @@ def calculate_next_upload_slot(state: dict) -> str:
 # ─────────────────────────────────────────────
 # Upload
 # ─────────────────────────────────────────────
-def upload_video(youtube, file_path: str, title: str, description: str, schedule_timestamp: str = None) -> str:
+def upload_video(
+    youtube,
+    file_path: str,
+    title: str,
+    description: str,
+    tags: list = None,
+    schedule_timestamp: str = None,
+) -> str:
     """
     Upload file_path as a private draft.
     Returns the video_id on success.
@@ -129,21 +140,26 @@ def upload_video(youtube, file_path: str, title: str, description: str, schedule
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"Upload target not found: {file_path}")
 
+    if tags is None:
+        tags = ["shorts", "cartoon", "viral"]
+
     print(f"\n⬆️   Uploading '{file_path}' to YouTube…")
     print(f"    Title: {title!r}")
+    print(f"    Tags : {tags}")
 
     body = {
         "snippet": {
             "title": title,
             "description": description,
             "categoryId": CATEGORY_FILM_ANIMATION,
+            "tags": tags,
         },
         "status": {
             "privacyStatus": "private",      # always uploaded as private draft
             "selfDeclaredMadeForKids": False,
         },
     }
-    
+
     if schedule_timestamp:
         body["status"]["publishAt"] = schedule_timestamp
 
@@ -261,13 +277,17 @@ def main():
     metadata = state.get("chunk_metadata", {}).get(chunk_str, {})
     
     ai_title = metadata.get("title", "").strip()
-    ai_desc = metadata.get("description", "").strip()
-    
+    ai_desc  = metadata.get("description", "").strip()
+    tags     = metadata.get("tags", ["shorts", "cartoon", "viral"])
+    if not isinstance(tags, list) or not tags:
+        tags = ["shorts", "cartoon", "viral"]
+
+    # Title must remain pristine — NO #shorts in the title
     if ai_title:
-        video_title = f"{ai_title} #shorts"
+        video_title = re.sub(r'#\w+', '', ai_title).strip()
     else:
-        video_title = f"{original_title} 💀🗣️ #shorts"
-        
+        video_title = f"{original_title} 💀🗣️"
+
     if ai_desc:
         video_description = ai_desc
     else:
@@ -278,9 +298,9 @@ def main():
 
     # ── Attribution enforcement (V7.8) ─────────────────────────────────────
     # ABSOLUTE CONSTRAINT: the title string must remain clean and untouched.
-    # Attribution lives exclusively inside the description field.
+    # Attribution and #shorts live exclusively inside the description field.
     ELEVENLABS_ATTRIBUTION = "\n\nVoice by elevenlabs.io"
-    video_description = video_description + ELEVENLABS_ATTRIBUTION
+    video_description = video_description + ELEVENLABS_ATTRIBUTION + "\n\n#shorts"
 
     # 3. Calculate schedule timestamp
     schedule_timestamp = calculate_next_upload_slot(state)
@@ -291,7 +311,7 @@ def main():
         youtube = get_authenticated_service()
 
         # 5. Upload
-        video_id = upload_video(youtube, UPLOAD_FILE, video_title, video_description, schedule_timestamp)
+        video_id = upload_video(youtube, UPLOAD_FILE, video_title, video_description, tags, schedule_timestamp)
     except (ConnectionError, socket.gaierror, socket.timeout, Exception) as e:
         err_str = str(e).lower()
         if isinstance(e, (ConnectionError, socket.gaierror, socket.timeout)) or "network" in err_str or "connection" in err_str or "timeout" in err_str or "resolve" in err_str:
