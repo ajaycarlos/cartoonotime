@@ -7,8 +7,8 @@ opens YouTube Studio for review, then cleans up and increments state.
 Security: OAuth2 token file is chmod 600; all credentials stay local.
 
 V7.8 changes:
-  • Description attribution: auto-appends "Voice by elevenlabs.io"
-    to every upload's description. The video title is NEVER modified.
+  • Clean descriptions: #shorts lives exclusively inside the description field.
+    The video title is NEVER modified.
 """
 
 import os
@@ -305,9 +305,8 @@ def main():
 
     # ── Attribution enforcement (V7.8) ─────────────────────────────────────
     # ABSOLUTE CONSTRAINT: the title string must remain clean and untouched.
-    # Attribution and #shorts live exclusively inside the description field.
-    ELEVENLABS_ATTRIBUTION = "\n\nVoice by elevenlabs.io"
-    video_description = video_description + ELEVENLABS_ATTRIBUTION + "\n\n#shorts"
+    # #shorts lives exclusively inside the description field.
+    video_description = video_description + "\n\n#shorts"
 
     # 3. Calculate schedule timestamp
     schedule_timestamp = calculate_next_upload_slot(state)
