@@ -63,7 +63,7 @@ source venv/bin/activate
 ### Step 3: Install Python Packages
 With your virtual environment active, install the required libraries used across the pipeline:
 ```bash
-pip install python-dotenv google-genai yt-dlp openai-whisper google-auth-oauthlib google-api-python-client google-auth-httplib2 edge-tts
+pip install python-dotenv google-genai yt-dlp openai-whisper google-auth-oauthlib google-api-python-client google-auth-httplib2 edge-tts elevenlabs
 ```
 *(If a `requirements.txt` is available in your repository, simply run `pip install -r requirements.txt`)*
 
@@ -72,28 +72,38 @@ pip install python-dotenv google-genai yt-dlp openai-whisper google-auth-oauthli
 To protect the pipeline and enable AI features, you must configure strict security tokens and API keys.
 
 ### 1. Environment Variables
-You need to set two primary environment variables:
+You need to set three primary environment variables:
 - `API_AUTH_TOKEN`: Acts as a security gate to prevent unauthorized execution. **Must be set to `admin_authorized`.**
 - `GEMINI_API_KEY`: Your Google Gemini API key for the AI Director to analyze transcripts and slice the video.
+- `ELEVENLABS_API_KEY`: Your ElevenLabs API key for high-quality voice synthesis for video hooks.
 
 **Windows (CMD)**:
 ```cmd
 set API_AUTH_TOKEN=admin_authorized
 set GEMINI_API_KEY=your_key_here
+set ELEVENLABS_API_KEY=your_elevenlabs_key_here
 ```
 
 **Windows (PowerShell)**:
 ```powershell
 $env:API_AUTH_TOKEN="admin_authorized"
 $env:GEMINI_API_KEY="your_key_here"
+$env:ELEVENLABS_API_KEY="your_elevenlabs_key_here"
 ```
 
 **Linux / macOS**:
 ```bash
 export API_AUTH_TOKEN="admin_authorized"
 export GEMINI_API_KEY="your_key_here"
+export ELEVENLABS_API_KEY="your_elevenlabs_key_here"
 ```
-> **Tip**: You can also create a `.env` file in the root directory and add `API_AUTH_TOKEN=admin_authorized` and `GEMINI_API_KEY=your_key_here` to load them automatically.
+> **Tip**: You can also create a `.env` file in the root directory and add the following keys to load them automatically:
+> ```env
+> API_AUTH_TOKEN="admin_authorized"
+> GEMINI_API_KEY="your_key_here"
+> ELEVENLABS_API_KEY="your_elevenlabs_key_here"
+> ```
+> **Security Note**: Never commit your `.env` or `client_secrets.json` file to public repositories. Ensure they are listed in your `.gitignore` to prevent accidental credential leakage and keep your integrations secure.
 
 ### 2. YouTube API Credentials (OAuth)
 To automate private draft uploads to YouTube, you need a Google Cloud Console project with the YouTube Data API v3 enabled.
