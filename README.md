@@ -2,7 +2,14 @@
 
 Welcome to the **Brainrot Pipeline** — a fully automated, intelligent YouTube Shorts content pipeline! 
 
-This project leverages Gemini AI to effortlessly slice long-form YouTube content into engaging 60-second chunks, apply dynamic voiceover hooks, overlay satisfying background videos, and generate humanized, stylized subtitles. It handles everything from content curation to YouTube auto-scheduling and uploading.
+## ✨ Core Features
+- **Completely Automatic**: Simply paste a YouTube link, and the system will completely analyze the transcript to generate up to 5 shorts per 20 minutes of video.
+- **AI-Powered Audio Hooks**: Creates an engaging hook with Gemini and uses ElevenLabs for high-quality text-to-speech. The hook is placed right at the beginning of each short.
+- **Automated Metadata**: Automatically writes SEO-optimized titles and descriptions for each chunk, complete with appropriate tags and hashtags.
+- **Smart Auto-Scheduling**: When processing is completed, it redirects you to YouTube Studio and schedules the video upload for exactly 20:30 IST.
+- **Dynamic Visuals**: Overlays satisfying background videos and generates humanized, stylized subtitles.
+
+This project leverages Gemini AI to effortlessly slice long-form YouTube content into engaging 60-second chunks. It handles everything from content curation to YouTube auto-scheduling and uploading.
 
 Featuring the **V7.5 core engine baseline**, this pipeline is designed to save you hours of manual editing while maximizing audience retention and engagement.
 
