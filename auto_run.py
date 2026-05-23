@@ -7,6 +7,9 @@ import os
 STATE_FILE = "state.json"
 
 def main():
+    # Prompt user for shutdown toggle at the very beginning of the script
+    shutdown_choice = input("Do you want to shut down the PC after the entire queue is processed? (y/n): ").strip().lower()
+    
     os.environ["AUTO_RUN"] = "1"
     print("🚀 Starting Unattended Batch Runner...")
     
@@ -32,26 +35,31 @@ def main():
         print(f"▶️ Executing chunk {current + i}/{total}...")
         print(f"{'='*50}")
         
-        # Run main.py and automatically pipe "y\n" to standard input.
-        # This handles the Layout prompt (if missing) AND the final Smart Reset prompt.
+        if os.path.exists("ready_to_upload.mp4"):
+            print("⏩ Found existing 'ready_to_upload.mp4'. Skipping audio and video generation. Resuming upload phase...")
+        
+        # Run main.py. In AUTO_RUN mode, prompts are automatically bypassed.
         result = subprocess.run(
             [sys.executable, "main.py"],
-            input="y\n",
             text=True
         )
         
         if result.returncode != 0:
             print(f"\n❌ main.py crashed on chunk {current + i}. Halting unattended run!")
-            print("⚠️ System will NOT shut down so you can review the error logs.")
+            if shutdown_choice == 'y':
+                print("🛑 Executing system shutdown due to crash as requested...")
+                os.system("shutdown /s /t 60")
+            else:
+                print("🛑 Unattended run halted due to crash. Exit cleanly.")
             sys.exit(result.returncode)
 
     print("\n🎉 All chunks processed and scheduled successfully!")
-    print("🛑 Executing system shutdown...")
-    # ⚠️  AUDIT WARNING: os.system() passes a shell string and is equivalent to
-    # shell=True. Consider replacing with: subprocess.run(["sudo", "shutdown", "now"], check=False)
-    # to avoid shell injection risk in environments where the script path or
-    # environment variables could be influenced by untrusted input.
-    os.system("sudo shutdown now")
+    if shutdown_choice == 'y':
+        print("🛑 Executing system shutdown...")
+        os.system("shutdown /s /t 60")
+    else:
+        print("🛑 Queue processing complete. System will not shut down. Exiting cleanly.")
+        sys.exit(0)
 
 if __name__ == "__main__":
     main()

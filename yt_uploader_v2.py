@@ -191,7 +191,20 @@ def cleanup_and_advance(state: dict, chunk_file: str):
     # Delete the compiled split-screen output
     if os.path.exists(UPLOAD_FILE):
         print(f"🗑️   Deleting compiled output: {UPLOAD_FILE}")
-        os.remove(UPLOAD_FILE)
+        try:
+            os.remove(UPLOAD_FILE)
+        except OSError:
+            pass
+
+    # V7.8: Clean up all smart_editor.py temporary files strictly at the absolute END of the chunk lifecycle
+    editor_temps = ["temp_hooked.mp4", "temp_audio.wav", "temp_subs.srt", "temp_brainrot.ass", "temp_stacked.mp4"]
+    for tmp in editor_temps:
+        if os.path.exists(tmp):
+            print(f"🗑️   Deleting temporary file: {tmp}")
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
 
     # Increment current_chunk or mark as complete
     current = state.get("current_chunk", 1)
@@ -200,27 +213,43 @@ def cleanup_and_advance(state: dict, chunk_file: str):
     if current >= total:
         print("\n🎉 QUEUE COMPLETE! All scheduled chunks have been successfully pushed to YouTube.")
         
-        user_choice = input("❓ All chunks are uploaded! Do you want to perform a Smart Reset and delete local media assets? (y/n): ").strip().lower()
+        if os.environ.get("AUTO_RUN") == "1":
+            print("🤖  AUTO_RUN: Automatically proceeding with Smart Reset and local media asset cleanup.")
+            user_choice = 'y'
+        else:
+            user_choice = input("❓ All chunks are uploaded! Do you want to perform a Smart Reset and delete local media assets? (y/n): ").strip().lower()
+            
         if user_choice in ['y', 'yes']:
             # 1. Trigger Asset Cleanup
             import glob
             
-            # Delete residual chunk video files in queue/
+            def should_exclude(filepath: str) -> bool:
+                name = os.path.basename(filepath)
+                return name.endswith(("_intro.aac", "_outro.aac", "_hook.aac"))
+            
+            # Delete residual chunk video files in queue/ (except stateful audio files)
             for f in glob.glob(os.path.join(QUEUE_DIR, "*.mp4")):
+                if should_exclude(f):
+                    continue
                 try:
                     os.remove(f)
                 except OSError:
                     pass
                     
-            # Delete cached hook audio files in queue/
-            for f in glob.glob(os.path.join(QUEUE_DIR, "*_hook.aac")):
+            # Delete cached hook/stateful audio files in queue/ (EXCLUDING stateful audio cache files)
+            for f in glob.glob(os.path.join(QUEUE_DIR, "*.aac")):
+                if should_exclude(f):
+                    print(f"💾   Preserving Stateful Audio Cache file: {f}")
+                    continue
                 try:
                     os.remove(f)
                 except OSError:
                     pass
                     
-            # Delete lingering temp_* files and ready_to_upload.mp4 in root
+            # Delete lingering temp_* files in root (except stateful audio files)
             for f in glob.glob("temp_*"):
+                if should_exclude(f):
+                    continue
                 try:
                     os.remove(f)
                 except OSError:

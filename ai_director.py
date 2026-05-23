@@ -75,8 +75,8 @@ YTDLP_FORMAT  = "bestvideo[height<=1080]+bestaudio/best"
 
 # Minimum and maximum acceptable clip durations (seconds) — must mirror the
 # LLM prompt so malformed responses can be validated locally.
-CLIP_MIN_SEC  = 28   # slight buffer below the LLM's "30 s" rule
-CLIP_MAX_SEC  = 65   # slight buffer above the LLM's "60 s" rule
+CLIP_MIN_SEC  = 18   # slight buffer below the LLM's "20 s" rule
+CLIP_MAX_SEC  = 60   # slight buffer above the LLM's "55 s" rule
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -260,16 +260,18 @@ You are an expert YouTube Shorts editor AND audio-visual creative director. \
 Read the following video transcript. Find all highly engaging, self-contained \
 segments that would make viral Shorts.
 
+AUDIO & NARRATIVE BOUNDARY RULES (CRITICAL):
+1. Dynamic Duration: You are no longer restricted to a 30-second clip. You may select a chunk anywhere between 20 and 55 seconds in length. 
+2. Story Completion: The absolute highest priority is selecting a complete narrative arc. If the payoff, punchline, or resolution of the clip takes 45 or 50 seconds to unfold, you MUST extend the `end_time` to include it. Never cut off a story before the climax.
+3. Clean Starts: Your `start_time` MUST align perfectly with the transcript timestamp of the beginning of a new sentence or complete thought. NEVER start mid-sentence.
+4. Clean Ends: Your `end_time` MUST align perfectly with the transcript timestamp of a completed sentence. NEVER cut mid-word or before a sentence grammatically resolves.
+
 Strict Rules:
-1. Each clip must be between 30 and 60 seconds long.
-2. The start time must be a strong hook.
-3. CRITICAL: The clip MUST NOT end randomly. It must end at the natural conclusion \
-of a thought, a punchline, or a full sentence. Check the transcript text to ensure \
-the final sentence is complete.
-4. Use the EXACT numeric second values from the transcript timestamps (convert \
+1. The start time must be a strong hook.
+2. Use the EXACT numeric second values from the transcript timestamps (convert \
 HH:MM:SS format to total seconds, e.g. 00:01:15.50 → 75.5).
-5. Prefer moments with high energy, surprise, humour, or emotion.
-6. Clips must be self-contained — a viewer with no context of the full video \
+3. Prefer moments with high energy, surprise, humour, or emotion.
+4. Clips must be self-contained — a viewer with no context of the full video \
 must be able to understand and enjoy it.
 
 Title Formatting Rules:

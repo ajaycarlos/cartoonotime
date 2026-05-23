@@ -439,11 +439,10 @@ def process_video():
         print(f"    Subtitles burned   : {'yes' if srt_ok else 'no'}")
 
     finally:
-        # 9. Cleanup all temp files (hook generator cleans its own temps)
-        for tmp in (TEMP_HOOKED, TEMP_AUDIO, TEMP_SUBS, TEMP_ASS, TEMP_STACKED):
-            if os.path.exists(tmp):
-                os.remove(tmp)
-                print(f"   🗑️   Removed temp file: {tmp}")
+        # V7.8: Temporary files are now preserved until the absolute end of the
+        # chunk lifecycle (successful YouTube upload or user QC confirmation)
+        # to prevent premature file cleanup.
+        pass
 
 
 # ─────────────────────────────────────────────
