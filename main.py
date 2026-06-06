@@ -116,6 +116,14 @@ def save_history(history: dict) -> None:
         pass
 
 
+def normalize_title(s: str) -> str:
+    """Convert to lowercase and remove all non-alphanumeric characters for robust matching."""
+    if not s:
+        return ""
+    import re
+    return re.sub(r'[^a-z0-9]', '', s.lower())
+
+
 def check_duplicate_and_confirm(url: str, title: str, history: dict) -> bool:
     """
     Check if url OR title already exist in the history records.
@@ -125,10 +133,18 @@ def check_duplicate_and_confirm(url: str, title: str, history: dict) -> bool:
         False — user chose to abort (pipeline should exit 0).
     """
     records = history.get("records", [])
-    matched = [
-        r for r in records
-        if r.get("url") == url or r.get("title") == title
-    ]
+    norm_title = normalize_title(title)
+    
+    matched = []
+    for r in records:
+        if r.get("url") == url:
+            matched.append(r)
+            continue
+        r_title = r.get("title")
+        if r_title and norm_title and normalize_title(r_title) == norm_title:
+            matched.append(r)
+            continue
+
     if not matched:
         return True  # no duplicate — green light
 
@@ -309,13 +325,18 @@ def main():
         # ── V7.8: Duplicate History Checkpoint ──────────────────────────────
         history = load_history()
 
-        # Attempt a fast pre-check using URL only (title not known yet).
-        # A full title-match check runs after ai_director resolves the title.
-        url_records = [r for r in history.get("records", []) if r.get("url") == url]
-        if url_records:
-            should_continue = check_duplicate_and_confirm(url, url_records[0].get("title", ""), history)
-            if not should_continue:
-                sys.exit(0)
+        # PRE-CHECK: Fetch title quickly before any heavy operations
+        print("    🔍  Fetching video title for duplicate check...")
+        try:
+            title_cmd = ["yt-dlp", "--skip-download", "--print", "title", url]
+            title_result = subprocess.run(title_cmd, capture_output=True, text=True, check=True)
+            fetched_title = title_result.stdout.strip()
+        except Exception:
+            fetched_title = "Unknown Title"
+
+        should_continue = check_duplicate_and_confirm(url, fetched_title, history)
+        if not should_continue:
+            sys.exit(0)
 
         print("    Running ai_director.py…")
         run_script("AI Director", SCRIPTS["fetcher"], args=[url])
@@ -325,23 +346,12 @@ def main():
         try:
             with open(STATE_FILE, encoding="utf-8") as sf:
                 fresh_state = json.load(sf)
-            resolved_title = fresh_state.get("original_title", "Unknown Title")
+            resolved_title = fresh_state.get("original_title", fetched_title)
         except (OSError, json.JSONDecodeError):
-            resolved_title = "Unknown Title"
+            resolved_title = fetched_title
 
-        # Run a second, more precise title-level duplicate check before appending
-        if not url_records:  # URL was not a duplicate; check title now
-            title_records = [r for r in history.get("records", []) if r.get("title") == resolved_title]
-            if title_records:
-                print(
-                    f"\n⚠️   Title duplicate detected ('{resolved_title}' was previously processed). "
-                    "History not re-appended."
-                )
-            else:
-                append_to_history(url, resolved_title, history)
-        else:
-            # URL was already a duplicate but user forced through — still log the run
-            append_to_history(url, resolved_title, history)
+        # We already passed or overrode the duplicate check, so append securely
+        append_to_history(url, resolved_title, history)
     else:
         state   = read_state()
         current = state.get("current_chunk", 1)
