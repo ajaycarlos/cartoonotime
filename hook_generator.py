@@ -31,6 +31,7 @@ Security:
 All temp files are deleted on exit (success or failure).
 """
 
+import hashlib
 import json
 import os
 import subprocess
@@ -313,11 +314,6 @@ def apply_hook(input_video: str, output_video: str, chunk_index: int = 1) -> Non
     """
     # Temporary file names
     temp_voice  = "temp_hook_voice.mp3"
-    
-    # Cache path based on input chunk (e.g. queue/chunk_1.mp4 -> queue/chunk_1_hook.aac)
-    base_name = os.path.splitext(input_video)[0]
-    cached_audio = f"{base_name}_hook.aac"
-    
     temp_teaser = "temp_teaser_visual.mp4"
     temp_hook   = "temp_hook_final.mp4"
 
@@ -329,6 +325,11 @@ def apply_hook(input_video: str, output_video: str, chunk_index: int = 1) -> Non
     # Step 1 — Resolve phonetic hook text from state.json
     hook_text = get_chunk_hook_data(chunk_index)
     print(f"    Hook text : \"{hook_text}\"")
+
+    # Hash the hook text to create a content-aware cache filename
+    text_hash = hashlib.md5(hook_text.encode("utf-8")).hexdigest()
+    # Cache path based on hash of hook text
+    cached_audio = os.path.join(os.path.dirname(input_video), f"hook_{text_hash}.aac")
 
     try:
         # Step 2 & 3 — Cache check (Skip API if found)

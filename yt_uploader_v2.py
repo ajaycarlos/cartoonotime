@@ -225,7 +225,13 @@ def cleanup_and_advance(state: dict, chunk_file: str):
             
             def should_exclude(filepath: str) -> bool:
                 name = os.path.basename(filepath)
-                return name.endswith(("_intro.aac", "_outro.aac", "_hook.aac"))
+                # Matches legacy chunk-based cache formats
+                if name.endswith(("_intro.aac", "_outro.aac", "_hook.aac")):
+                    return True
+                # Matches new content-hash-based cache formats (e.g. hook_<md5>.aac)
+                if re.match(r"^(hook|intro|outro)_[a-fA-F0-9]+\.aac$", name):
+                    return True
+                return False
             
             # Delete residual chunk video files in queue/ (except stateful audio files)
             for f in glob.glob(os.path.join(QUEUE_DIR, "*.mp4")):
